@@ -17,28 +17,22 @@ class MatrixViewTest(unittest.TestCase):
         V = FunctionSpace(mesh, 'CG', 1)
         u, v = TrialFunction(V), TestFunction(V)
         a = inner(grad(u), grad(v))*dx
-
-        tic()
-        A = assemble(a)
-        t_A1 = toc()
+ 
+        A = Matrix()
+        AssemblerBase().init_global_tensor(A, Form(a))
 
         tic()
         assemble(a, tensor=A)
-        t_A2 = toc()
+        t_assemble = toc()
 
-        tic()
-        ind = V.dofmap().dofs()
-        t_ind_dofmap = toc()
-
-        tic()
-        ind = np.array(ind, dtype='uintp')
-        t_ind_typecast = toc()
-        self.assertLess(t_ind_dofmap, 1.0)
+        # NOTE: User must take care of ind not being garbage
+        #       collected during lifetime of B!
+        ind = np.arange(V.dim(), dtype='uintp')
 
         A1 = A.copy()
         A1.zero()
         
-        toc()
+        tic()
         B = MatrixView(A1, ind)
         t_matview_constructor = toc()
         self.assertLess(t_matview_constructor, 0.5)
@@ -46,7 +40,11 @@ class MatrixViewTest(unittest.TestCase):
         tic()
         assemble(a, tensor=B, add_values=True)
         t_assemble_matview = toc()
-        self.assertLess(t_assemble_matview, 2.0*t_A2)
+        self.assertLess(t_assemble_matview, 2.0*t_assemble)
+
+        print 'Timings:'
+        print '  Regular assemble        ', t_assemble
+        print '  Assemble into MatrixView', t_assemble_matview
 
         A1 -= A
         errornorm = A1.norm('linf')
