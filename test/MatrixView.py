@@ -33,7 +33,7 @@ class MatrixViewTest(unittest.TestCase):
         A1.zero()
         
         tic()
-        B = MatrixView(A1, ind)
+        B = MatrixView(A1, ind, ind)
         t_matview_constructor = toc()
         self.assertLess(t_matview_constructor, 0.5)
 

@@ -20,8 +20,11 @@ namespace dolfin
 
     /// Constructor
     MatrixView(const std::shared_ptr<GenericMatrix> A,
-               const Array<std::size_t>& indices)
-      : _A(A), _ind(indices.size(), const_cast<std::size_t*>(indices.data()))
+               const Array<std::size_t>& rows,
+               const Array<std::size_t>& cols)
+      : _A(A),
+        _rows(rows.size(), const_cast<std::size_t*>(rows.data())),
+        _cols(rows.size(), const_cast<std::size_t*>(cols.data()))
     { 
       // TODO: check indices?
     }
@@ -29,26 +32,51 @@ namespace dolfin
     /// Copy constructor
     MatrixView(const MatrixView& mv)
       : _A(mv._A), 
-        _ind(mv._ind.size(), const_cast<std::size_t*>(mv._ind.data()))
+        _rows(mv._rows.size(), const_cast<std::size_t*>(mv._rows.data())),
+        _cols(mv._cols.size(), const_cast<std::size_t*>(mv._cols.data()))
     { }
 
     /// Destructor
     virtual ~MatrixView() { }
 
     /// Return indices
-    void inds(Array<std::size_t>& indices) const
+    void inds(Array<std::size_t>& indices, std::size_t dim) const
     {
-      if (indices.size() != _ind.size())
+      const Array<std::size_t>* _inds;
+      switch (dim)
+      {
+        case 0:
+          _inds = &_rows;
+        case 1:
+          _inds = &_cols;
+        default:
+          dolfin_error("MatrixView.h",
+                       "return indices of MatrixView",
+                       "Supplied dim is wrong");
+      }
+      if (indices.size() != _inds->size())
         dolfin_error("MatrixView.h",
                      "return indices of MatrixView",
                      "Size of supplied indices does not match");
       for (std::size_t i = 0; i < indices.size(); ++i)
-        indices[i] = _ind[i];
+        indices[i] = (*_inds)[i];
     }
 
     /// Return size of given dimension
     virtual std::size_t size(std::size_t dim) const
-    { return _ind.size(); }
+    {
+      switch (dim)
+      {
+        case 0:
+          return _rows.size();
+        case 1:
+          return _cols.size();
+        default:
+          dolfin_error("MatrixView.h",
+                       "return indices of MatrixView",
+                       "Supplied dim is wrong");
+      }
+    }
 
     /// Return local ownership range
     virtual std::pair<std::size_t, std::size_t>
@@ -129,9 +157,9 @@ namespace dolfin
       rowcols[0].resize(m);
       rowcols[1].resize(n);
       for (std::size_t i = 0; i < m; ++i)
-        rowcols[0][i] = _ind[rows[i]];
+        rowcols[0][i] = _rows[rows[i]];
       for (std::size_t i = 0; i < n; ++i)
-        rowcols[1][i] = _ind[cols[i]];
+        rowcols[1][i] = _cols[cols[i]];
       _A->add(block, rowcols);
     }
 
@@ -207,7 +235,7 @@ namespace dolfin
     }
 
     /// Assignment operator
-    // Shouldn't be disabled
+    // TODO: Shouldn't be disabled?!
     virtual const GenericMatrix& operator= (const GenericMatrix& A)
     {
       *this = as_type<const MatrixView>(A);
@@ -245,7 +273,8 @@ namespace dolfin
 
     /// Return linear algebra backend factory
     virtual GenericLinearAlgebraFactory& factory() const
-    { return DefaultFactory::factory(); }
+    { dolfin_not_implemented();
+      return DefaultFactory::factory(); }
 
     //--- LinearOperator interface ---
 
@@ -260,7 +289,9 @@ namespace dolfin
 
     std::shared_ptr<GenericMatrix> _A;
 
-    Array<std::size_t> _ind;
+    Array<std::size_t> _rows;
+
+    Array<std::size_t> _cols;
 
   };
 
