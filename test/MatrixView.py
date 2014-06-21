@@ -17,7 +17,7 @@ class MatrixViewTest(unittest.TestCase):
         V = FunctionSpace(mesh, 'CG', 1)
         u, v = TrialFunction(V), TestFunction(V)
         a = inner(grad(u), grad(v))*dx
- 
+
         A = Matrix()
         AssemblerBase().init_global_tensor(A, Form(a))
 
@@ -31,7 +31,7 @@ class MatrixViewTest(unittest.TestCase):
 
         A1 = A.copy()
         A1.zero()
-        
+
         tic()
         B = MatrixView(A1, ind, ind)
         t_matview_constructor = toc()
@@ -49,6 +49,15 @@ class MatrixViewTest(unittest.TestCase):
         A1 -= A
         errornorm = A1.norm('linf')
         self.assertAlmostEqual(errornorm, 0.0)
+
+    def _test_cellwise_permutation(self):
+
+        m, n = 2000, 300
+        mesh = UnitSquareMesh(m, n)
+        V = FunctionSpace(mesh, 'CG', 1)
+        u, v = TrialFunction(V), TestFunction(V)
+        a = inner(grad(u), grad(v))*dx
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -25,13 +25,13 @@ namespace dolfin
       : _A(A),
         _rows(rows.size(), const_cast<std::size_t*>(rows.data())),
         _cols(rows.size(), const_cast<std::size_t*>(cols.data()))
-    { 
+    {
       // TODO: check indices?
     }
 
     /// Copy constructor
     MatrixView(const MatrixView& mv)
-      : _A(mv._A), 
+      : _A(mv._A),
         _rows(mv._rows.size(), const_cast<std::size_t*>(mv._rows.data())),
         _cols(mv._cols.size(), const_cast<std::size_t*>(mv._cols.data()))
     { }
@@ -89,7 +89,7 @@ namespace dolfin
 
     /// Set all entries to zero and keep any sparse structure
     virtual void zero()
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
@@ -101,7 +101,7 @@ namespace dolfin
 
     /// Return informal string representation (pretty-print)
     virtual std::string str(bool verbose) const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return "Not implemented!";
@@ -218,6 +218,13 @@ namespace dolfin
       dolfin_not_implemented();
     }
 
+    /// Set diagonal of a matrix
+    virtual void set_diagonal(const GenericVector& x)
+    {
+      //TODO: implement!
+      dolfin_not_implemented();
+    }
+
     /// Multiply matrix by given number
     virtual const MatrixView& operator*= (double a)
     {
@@ -261,8 +268,7 @@ namespace dolfin
     /// Return true if empty
     virtual bool empty() const
     {
-      //TODO: implement!
-      dolfin_not_implemented();
+      // Non-empty from construction time
       return false;
     }
 

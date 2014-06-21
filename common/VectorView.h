@@ -25,13 +25,13 @@ namespace dolfin
                const Array<std::size_t>& inds)
       : _x(x),
         _inds(inds.size(), const_cast<std::size_t*>(inds.data()))
-    { 
+    {
       // TODO: check indices?
     }
 
     /// Copy constructor
     VectorView(const VectorView& mv)
-      : _x(mv._x), 
+      : _x(mv._x),
         _inds(mv._inds.size(), const_cast<std::size_t*>(mv._inds.data()))
     { }
 
@@ -42,7 +42,7 @@ namespace dolfin
 
     /// Set all entries to zero and keep any sparse structure
     virtual void zero()
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
@@ -54,7 +54,7 @@ namespace dolfin
 
     /// Return informal string representation (pretty-print)
     virtual std::string str(bool verbose) const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return "Not implemented!";
@@ -70,7 +70,7 @@ namespace dolfin
 
     /// Initialize vector to global size N
     virtual void init(MPI_Comm comm, std::size_t N)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
@@ -78,7 +78,7 @@ namespace dolfin
     /// Intitialize vector with given local ownership range
     virtual void init(MPI_Comm comm,
                       std::pair<std::size_t, std::size_t> range)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
@@ -88,7 +88,7 @@ namespace dolfin
     virtual void init(MPI_Comm comm,
                       std::pair<std::size_t, std::size_t> range,
                       const std::vector<la_index>& ghost_indices)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
@@ -99,21 +99,21 @@ namespace dolfin
 
     /// Return local size of vector
     virtual std::size_t local_size() const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Return local ownership range of a vector
     virtual std::pair<std::size_t, std::size_t> local_range() const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Determine whether global vector index is owned by this process
     virtual bool owns_index(std::size_t i) const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
@@ -121,7 +121,7 @@ namespace dolfin
     /// Get block of values (values must all live on the local process)
     virtual void get_local(double* block, std::size_t m,
                            const dolfin::la_index* rows) const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
@@ -129,7 +129,7 @@ namespace dolfin
     /// Set block of values
     virtual void set(const double* block, std::size_t m,
                      const dolfin::la_index* rows)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
@@ -137,7 +137,7 @@ namespace dolfin
     /// Add block of values
     virtual void add(const double* block, std::size_t m,
                      const dolfin::la_index* rows)
-    { 
+    {
       // TODO: Dynamic allocation of memory?! Not good!
       std::vector<dolfin::la_index> inds;
       inds.resize(m);
@@ -148,21 +148,21 @@ namespace dolfin
 
     /// Get all values on local process
     virtual void get_local(std::vector<double>& values) const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Set all values on local process
     virtual void set_local(const std::vector<double>& values)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Add values to each entry on local process
     virtual void add_local(const Array<double>& values)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
@@ -170,7 +170,7 @@ namespace dolfin
     /// Gather entries into local vector x
     virtual void gather(GenericVector& x,
                         const std::vector<dolfin::la_index>& indices) const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
@@ -178,35 +178,35 @@ namespace dolfin
     /// Gather entries into x
     virtual void gather(std::vector<double>& x,
                         const std::vector<dolfin::la_index>& indices) const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Gather all entries into x on process 0
     virtual void gather_on_zero(std::vector<double>& x) const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Add multiple of given vector (AXPY operation)
     virtual void axpy(double a, const GenericVector& x)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Replace all entries in the vector by their absolute values
     virtual void abs()
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Return inner product with given vector
     virtual double inner(const GenericVector& x) const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return 0.0;
@@ -214,7 +214,7 @@ namespace dolfin
 
     /// Return norm of vector
     virtual double norm(std::string norm_type) const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return 0.0;
@@ -222,7 +222,7 @@ namespace dolfin
 
     /// Return minimum value of vector
     virtual double min() const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return 0.0;
@@ -230,7 +230,7 @@ namespace dolfin
 
     /// Return maximum value of vector
     virtual double max() const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return 0.0;
@@ -238,7 +238,7 @@ namespace dolfin
 
     /// Return sum of vector
     virtual double sum() const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return 0.0;
@@ -247,7 +247,7 @@ namespace dolfin
     /// Return sum of selected rows in vector. Repeated entries are
     /// only summed once.
     virtual double sum(const Array<std::size_t>& rows) const
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return 0.0;
@@ -255,7 +255,7 @@ namespace dolfin
 
     /// Multiply vector by given number
     virtual const VectorView& operator*= (double a)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return *this;
@@ -263,7 +263,7 @@ namespace dolfin
 
     /// Multiply vector by another vector pointwise
     virtual const VectorView& operator*= (const GenericVector& x)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return *this;
@@ -271,7 +271,7 @@ namespace dolfin
 
     /// Divide vector by given number
     virtual const VectorView& operator/= (double a)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return *this;
@@ -279,7 +279,7 @@ namespace dolfin
 
     /// Add given vector
     virtual const VectorView& operator+= (const GenericVector& x)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return *this;
@@ -287,7 +287,7 @@ namespace dolfin
 
     /// Add number to all components of a vector
     virtual const VectorView& operator+= (double a)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return *this;
@@ -295,7 +295,7 @@ namespace dolfin
 
     /// Subtract given vector
     virtual const VectorView& operator-= (const GenericVector& x)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return *this;
@@ -303,7 +303,7 @@ namespace dolfin
 
     /// Subtract number from all components of a vector
     virtual const VectorView& operator-= (double a)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       return *this;
@@ -312,7 +312,7 @@ namespace dolfin
     /// Assignment operator
     // TODO: Shouldn't be disabled?!
     virtual const GenericVector& operator= (const GenericVector& x)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
       *this = as_type<const VectorView>(x);
@@ -321,14 +321,10 @@ namespace dolfin
 
     /// Assignment operator
     virtual const VectorView& operator= (double a)
-    { 
+    {
       //TODO: implement!
       dolfin_not_implemented();
     }
-
-    /// Update ghost values
-    virtual void update_ghost_values()
-    { _x->update_ghost_values(); }
 
   private:
 
@@ -349,8 +345,7 @@ namespace dolfin
     /// Return true if empty
     virtual bool empty() const
     {
-      //TODO: implement!
-      dolfin_not_implemented();
+      // Non-empty from construction time
       return false;
     }
 

@@ -17,7 +17,7 @@ class VectorViewTest(unittest.TestCase):
         V = FunctionSpace(mesh, 'CG', 1)
         u, v = TrialFunction(V), TestFunction(V)
         L = v*dx
- 
+
         x = Vector()
         AssemblerBase().init_global_tensor(x, Form(L))
 
@@ -26,12 +26,12 @@ class VectorViewTest(unittest.TestCase):
         t_assemble = toc()
 
         # NOTE: User must take care of ind not being garbage
-        #       collected during lifetime of B!
+        #       collected during lifetime of y!
         ind = np.arange(V.dim(), dtype='uintp')
 
         x1 = x.copy()
         x1.zero()
-        
+
         tic()
         y = VectorView(x1, ind)
         t_vecview_constructor = toc()
