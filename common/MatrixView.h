@@ -83,8 +83,8 @@ namespace dolfin
     virtual std::pair<std::size_t, std::size_t>
       local_range(std::size_t dim) const
     {
-      dolfin_assert(_A);
-      // TODO: this is wrong!
+      //TODO: implement!
+      dolfin_not_implemented();
       return _A->local_range(dim);
     }
 
