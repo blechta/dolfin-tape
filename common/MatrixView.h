@@ -20,9 +20,10 @@ namespace dolfin
 
     /// Constructor
     MatrixView(const std::shared_ptr<GenericMatrix> A,
+               const std::size_t dim0, const std::size_t dim1,
                const Array<std::size_t>& rows,
                const Array<std::size_t>& cols)
-      : _A(A),
+      : _A(A), _dim0(dim0), _dim1(dim1),
         _rows(rows.size(), const_cast<std::size_t*>(rows.data())),
         _cols(rows.size(), const_cast<std::size_t*>(cols.data()))
     {
@@ -31,7 +32,7 @@ namespace dolfin
 
     /// Copy constructor
     MatrixView(const MatrixView& mv)
-      : _A(mv._A),
+      : _A(mv._A), _dim0(mv._dim0), _dim1(mv._dim1),
         _rows(mv._rows.size(), const_cast<std::size_t*>(mv._rows.data())),
         _cols(mv._cols.size(), const_cast<std::size_t*>(mv._cols.data()))
     { }
@@ -68,9 +69,9 @@ namespace dolfin
       switch (dim)
       {
         case 0:
-          return _rows.size();
+          return _dim0;
         case 1:
-          return _cols.size();
+          return _dim1;
         default:
           dolfin_error("MatrixView.h",
                        "return indices of MatrixView",
@@ -137,7 +138,7 @@ namespace dolfin
       dolfin_not_implemented();
     }
 
-    /// Set block of values
+    /// Set block of values using global indices
     virtual void set(const double* block,
                      std::size_t m, const dolfin::la_index* rows,
                      std::size_t n, const dolfin::la_index* cols)
@@ -146,10 +147,28 @@ namespace dolfin
       dolfin_not_implemented();
     }
 
-    /// Add block of values
+    /// Set block of values using local indices
+    virtual void set_local(const double* block,
+                           std::size_t m, const dolfin::la_index* rows,
+                           std::size_t n, const dolfin::la_index* cols)
+    {
+      //TODO: implement!
+      dolfin_not_implemented();
+    }
+
+    /// Add block of values using global indices
     virtual void add(const double* block,
                      std::size_t m, const dolfin::la_index* rows,
                      std::size_t n, const dolfin::la_index* cols)
+    {
+      //TODO: implement!
+      dolfin_not_implemented();
+    }
+
+    /// Add block of values using local indices
+    virtual void add_local(const double* block,
+                           std::size_t m, const dolfin::la_index* rows,
+                           std::size_t n, const dolfin::la_index* cols)
     {
       // TODO: Dynamic allocation of memory?! Not good!
       std::vector<std::vector<dolfin::la_index> > rowcols;
@@ -160,7 +179,7 @@ namespace dolfin
         rowcols[0][i] = _rows[rows[i]];
       for (std::size_t i = 0; i < n; ++i)
         rowcols[1][i] = _cols[cols[i]];
-      _A->add(block, rowcols);
+      _A->add_local(block, rowcols);
     }
 
     /// Add multiple of given matrix (AXPY operation)
@@ -203,8 +222,15 @@ namespace dolfin
       dolfin_not_implemented();
     }
 
-    /// Set given rows to identity matrix
+    /// Set given rows (global row indices) to identity matrix
     virtual void ident(std::size_t m, const dolfin::la_index* rows)
+    {
+      //TODO: implement!
+      dolfin_not_implemented();
+    }
+
+    /// Set given rows (local row indices) to identity matrix
+    virtual void ident_local(std::size_t m, const dolfin::la_index* rows)
     {
       //TODO: implement!
       dolfin_not_implemented();
@@ -295,9 +321,9 @@ namespace dolfin
 
     std::shared_ptr<GenericMatrix> _A;
 
-    Array<std::size_t> _rows;
+    std::size_t _dim0, _dim1;
 
-    Array<std::size_t> _cols;
+    Array<std::size_t> _rows, _cols;
 
   };
 

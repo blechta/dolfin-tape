@@ -22,17 +22,18 @@ namespace dolfin
 
     /// Constructor
     VectorView(const std::shared_ptr<GenericVector> x,
+               const std::size_t dim,
                const Array<std::size_t>& inds)
-      : _x(x),
+      : _x(x), _dim(dim),
         _inds(inds.size(), const_cast<std::size_t*>(inds.data()))
     {
       // TODO: check indices?
     }
 
     /// Copy constructor
-    VectorView(const VectorView& mv)
-      : _x(mv._x),
-        _inds(mv._inds.size(), const_cast<std::size_t*>(mv._inds.data()))
+    VectorView(const VectorView& vv)
+      : _x(vv._x), _dim(vv._dim),
+        _inds(vv._inds.size(), const_cast<std::size_t*>(vv._inds.data()))
     { }
 
     /// Destructor
@@ -87,6 +88,7 @@ namespace dolfin
     /// values
     virtual void init(MPI_Comm comm,
                       std::pair<std::size_t, std::size_t> range,
+                      const std::vector<std::size_t>& local_to_global_map,
                       const std::vector<la_index>& ghost_indices)
     {
       //TODO: implement!
@@ -95,7 +97,7 @@ namespace dolfin
 
     /// Return global size of vector
     virtual std::size_t size() const
-    { return _inds.size(); }
+    { return _dim; }
 
     /// Return local size of vector
     virtual std::size_t local_size() const
@@ -118,7 +120,17 @@ namespace dolfin
       dolfin_not_implemented();
     }
 
-    /// Get block of values (values must all live on the local process)
+    /// Get block of values using global indices (values must all live
+    /// on the local process, ghosts cannot be accessed)
+    virtual void get(double* block, std::size_t m,
+                     const dolfin::la_index* rows) const
+    {
+      //TODO: implement!
+      dolfin_not_implemented();
+    }
+
+    /// Get block of values using local indices (values must all live
+    /// on the local process, ghost are accessible)
     virtual void get_local(double* block, std::size_t m,
                            const dolfin::la_index* rows) const
     {
@@ -126,7 +138,7 @@ namespace dolfin
       dolfin_not_implemented();
     }
 
-    /// Set block of values
+    /// Set block of values using global indices
     virtual void set(const double* block, std::size_t m,
                      const dolfin::la_index* rows)
     {
@@ -134,16 +146,32 @@ namespace dolfin
       dolfin_not_implemented();
     }
 
-    /// Add block of values
+    /// Set block of values using local indices
+    virtual void set_local(const double* block, std::size_t m,
+                           const dolfin::la_index* rows)
+    {
+      //TODO: implement!
+      dolfin_not_implemented();
+    }
+
+    /// Add block of values using global indices
     virtual void add(const double* block, std::size_t m,
                      const dolfin::la_index* rows)
+    {
+      //TODO: implement!
+      dolfin_not_implemented();
+    }
+
+    /// Add block of values using local indices
+    virtual void add_local(const double* block, std::size_t m,
+                           const dolfin::la_index* rows)
     {
       // TODO: Dynamic allocation of memory?! Not good!
       std::vector<dolfin::la_index> inds;
       inds.resize(m);
       for (std::size_t i = 0; i < m; ++i)
         inds[i] = _inds[rows[i]];
-      _x->add(block, m, inds.data());
+      _x->add_local(block, m, inds.data());
     }
 
     /// Get all values on local process
@@ -362,6 +390,8 @@ namespace dolfin
   private:
 
     std::shared_ptr<GenericVector> _x;
+
+    std::size_t _dim;
 
     Array<std::size_t> _inds;
 

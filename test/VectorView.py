@@ -5,7 +5,7 @@ import numpy as np
 header_file = open("../common/VectorView.h")
 code = "\n".join(header_file.readlines())
 header_file.close()
-VectorView_module = compile_extension_module(code)
+VectorView_module = compile_extension_module(code, cppargs='-g3')
 VectorView = VectorView_module.VectorView
 
 class VectorViewTest(unittest.TestCase):
@@ -25,15 +25,17 @@ class VectorViewTest(unittest.TestCase):
         assemble(L, tensor=x)
         t_assemble = toc()
 
+        # Upper bound on dof count (including ghosts)
+        num_dofs = V.dofmap().max_cell_dimension()*mesh.num_cells()
         # NOTE: User must take care of ind not being garbage
         #       collected during lifetime of y!
-        ind = np.arange(V.dim(), dtype='uintp')
+        ind = np.arange(num_dofs, dtype='uintp')
 
         x1 = x.copy()
         x1.zero()
 
         tic()
-        y = VectorView(x1, ind)
+        y = VectorView(x1, V.dim(), ind)
         t_vecview_constructor = toc()
         self.assertLess(t_vecview_constructor, 0.5)
 
