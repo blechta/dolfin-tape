@@ -2,11 +2,7 @@ import unittest
 from dolfin import *
 import numpy as np
 
-header_file = open("../common/MatrixView.h")
-code = "\n".join(header_file.readlines())
-header_file.close()
-MatrixView_module = compile_extension_module(code, cppargs='-g3')
-MatrixView = MatrixView_module.MatrixView
+from common import MatrixView
 
 class MatrixViewTest(unittest.TestCase):
 
@@ -27,8 +23,6 @@ class MatrixViewTest(unittest.TestCase):
 
         # Upper bound on dof count (including ghosts)
         num_dofs = V.dofmap().max_cell_dimension()*mesh.num_cells()
-        # NOTE: User must take care of ind not being garbage
-        #       collected during lifetime of B!
         ind = np.arange(num_dofs, dtype='uintp')
 
         A1 = A.copy()
@@ -36,6 +30,7 @@ class MatrixViewTest(unittest.TestCase):
 
         tic()
         B = MatrixView(A1, V.dim(), V.dim(), ind, ind)
+        del ind # Check that ind is not garbage collected prematuraly
         t_matview_constructor = toc()
         self.assertLess(t_matview_constructor, 0.5)
 

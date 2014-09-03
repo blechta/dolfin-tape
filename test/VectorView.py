@@ -2,11 +2,7 @@ import unittest
 from dolfin import *
 import numpy as np
 
-header_file = open("../common/VectorView.h")
-code = "\n".join(header_file.readlines())
-header_file.close()
-VectorView_module = compile_extension_module(code, cppargs='-g3')
-VectorView = VectorView_module.VectorView
+from common import VectorView
 
 class VectorViewTest(unittest.TestCase):
 
@@ -27,8 +23,6 @@ class VectorViewTest(unittest.TestCase):
 
         # Upper bound on dof count (including ghosts)
         num_dofs = V.dofmap().max_cell_dimension()*mesh.num_cells()
-        # NOTE: User must take care of ind not being garbage
-        #       collected during lifetime of y!
         ind = np.arange(num_dofs, dtype='uintp')
 
         x1 = x.copy()
@@ -36,6 +30,7 @@ class VectorViewTest(unittest.TestCase):
 
         tic()
         y = VectorView(x1, V.dim(), ind)
+        del ind # Check that ind is not garbage collected prematuraly
         t_vecview_constructor = toc()
         self.assertLess(t_vecview_constructor, 0.5)
 
