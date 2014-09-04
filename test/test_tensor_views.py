@@ -20,6 +20,7 @@ class BaseCase(unittest.TestCase):
         self.dim = V.dim()
 
         # Number DOFs including ghosts; Lagrange deg 1 assumend
+        # TODO: What is a generic way to obtain it?
         self.num_dofs = mesh.num_vertices()
 
         # Number owned DOFs
@@ -133,7 +134,10 @@ class SmallCase(BaseCase):
         A = assemble(self.a)
         A1 = A.copy()
         A1.zero()
-        as_backend_type(A1).mat().setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
+        # NOTE: With permutation below we cannot ensure that sparsity
+        #       pattern is preserved. This is very very very slow!
+        as_backend_type(A1).mat().setOption(
+                PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
 
         # Indices providing Matrix/VectorView mapping
         ind = np.arange(self.num_dofs, dtype='uintp')
