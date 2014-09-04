@@ -26,9 +26,6 @@ class BaseCase(unittest.TestCase):
         range = V.dofmap().ownership_range()
         self.num_owned_dofs = range[1] - range[0]
 
-        # Indices providing Matrix/VectorView mapping
-        self.ind = np.arange(self.num_dofs, dtype='uintp')
-
 
 class LargeCase(BaseCase):
 
@@ -46,8 +43,11 @@ class LargeCase(BaseCase):
         A1 = A.copy()
         A1.zero()
 
+        # Indices providing Matrix/VectorView mapping
+        ind = np.arange(self.num_dofs, dtype='uintp')
+
         tic()
-        B = MatrixView(A1, self.dim, self.dim, self.ind, self.ind)
+        B = MatrixView(A1, self.dim, self.dim, ind, ind)
         t_matview_constructor = toc()
         self.assertLess(t_matview_constructor, 0.5)
 
@@ -77,8 +77,11 @@ class LargeCase(BaseCase):
         x1 = x.copy()
         x1.zero()
 
+        # Indices providing Matrix/VectorView mapping
+        ind = np.arange(self.num_dofs, dtype='uintp')
+
         tic()
-        y = VectorView(x1, self.dim, self.ind)
+        y = VectorView(x1, self.dim, ind)
         t_vecview_constructor = toc()
         self.assertLess(t_vecview_constructor, 0.5)
 
@@ -93,8 +96,8 @@ class LargeCase(BaseCase):
 
         # Shuffle DOFs; owned and ghosts separately
         random.seed(42)
-        random.shuffle(self.ind[:self.num_owned_dofs ])
-        random.shuffle(self.ind[ self.num_owned_dofs:])
+        random.shuffle(ind[:self.num_owned_dofs ])
+        random.shuffle(ind[ self.num_owned_dofs:])
 
         x1.zero() # NOTE: VectorView.zero,norm not yet implemented, so calling to x1
         tic()
@@ -108,7 +111,7 @@ class LargeCase(BaseCase):
         # NOTE: Works only sequentially as we did not shuffle ghosts properly
         if MPI.size(mpi_comm_world()) == 1:
             self.assertAlmostEqual(
-                    sum(abs(x1.array()[self.ind[:self.num_owned_dofs]]-x.array())),
+                    sum(abs(x1.array()[ind[:self.num_owned_dofs]]-x.array())),
                     0.0)
 
         print 'Timings:'
@@ -121,6 +124,10 @@ class SmallCase(BaseCase):
 
     nx = (20, 30)
 
+    # NOTE: Works only sequentially as we did not shuffle ghosts properly;
+    #       in fact, Matrix.array() is dense block with all the columns
+    @unittest.skipIf(MPI.size(mpi_comm_world()) > 1,
+                     "Skipping unit test(s) not working in parallel")
     def test_shuffled_matrix_view(self):
 
         A = assemble(self.a)
@@ -128,9 +135,26 @@ class SmallCase(BaseCase):
         A1.zero()
         as_backend_type(A1).mat().setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
 
-        B = MatrixView(A1, self.dim, self.dim, self.ind, self.ind)
+        # Indices providing Matrix/VectorView mapping
+        ind = np.arange(self.num_dofs, dtype='uintp')
 
+        # Shuffle DOFs; owned and ghosts separately
+        random.seed(42)
+        random.shuffle(ind[:self.num_owned_dofs ])
+        random.shuffle(ind[ self.num_owned_dofs:])
+
+        B = MatrixView(A1, self.dim, self.dim, ind, ind)
         assemble(self.a, tensor=B, add_values=True)
+
+        #print MPI.rank(mpi_comm_world()), self.dim, self.num_dofs, self.num_owned_dofs, \
+        #      inds[0].shape, inds[1].shape, A1.array().shape, A.array().shape
+
+        # Check that arrays are the same
+        ind = ind[:self.num_owned_dofs]
+        inds = np.ix_(ind, ind)
+        self.assertAlmostEqual(
+                    sum(sum(abs(A1.array()[inds]-A.array()))),
+                    0.0)
 
 
 if __name__ == "__main__":
