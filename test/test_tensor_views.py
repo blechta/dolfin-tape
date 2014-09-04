@@ -23,8 +23,8 @@ class MatrixViewTest(unittest.TestCase):
         assemble(a, tensor=A)
         t_assemble = toc()
 
-        # Upper bound on dof count (including ghosts)
-        num_dofs = V.dofmap().max_cell_dimension()*mesh.num_cells()
+        # Number DOFs including ghosts; Lagrange deg 1 assumend
+        num_dofs = mesh.num_vertices()
         ind = np.arange(num_dofs, dtype='uintp')
 
         A1 = A.copy()
@@ -32,9 +32,9 @@ class MatrixViewTest(unittest.TestCase):
 
         tic()
         B = MatrixView(A1, V.dim(), V.dim(), ind, ind)
-        del ind # Check that ind is not garbage collected prematuraly
         t_matview_constructor = toc()
         self.assertLess(t_matview_constructor, 0.5)
+        del ind # Check that ind is not garbage collected prematurely
 
         tic()
         assemble(a, tensor=B, add_values=True)
@@ -42,30 +42,12 @@ class MatrixViewTest(unittest.TestCase):
         self.assertLess(t_assemble_matview, 2.0*t_assemble)
 
         print 'Timings:'
-        print '  Regular assemble        ', t_assemble
-        print '  Assemble into MatrixView', t_assemble_matview
+        print '  Regular assemble                 ', t_assemble
+        print '  Assemble into MatrixView         ', t_assemble_matview
 
         A1 -= A
         errornorm = A1.norm('linf')
         self.assertAlmostEqual(errornorm, 0.0)
-
-
-        # (Deterministically) shuffle just owned dofs because we don't
-        # know how much dofs including ghosts is there exactly
-        ind = np.arange(num_dofs, dtype='uintp')
-        range = V.dofmap().ownership_range()
-        num_owned_dofs = range[1] - range[0]
-        random.seed(42)
-        random.shuffle(ind[:num_owned_dofs])
-
-        # Zero actual storage; MatrixView.zero not implemented yet
-
-        # Assemble into permuted matrix and compare norms
-        # TODO: Compare also action to vector
-        # NOTE: MatrixView.zero,norm not yet implemented, so calling to A1
-        A1.zero()
-        assemble(a, tensor=B, add_values=True)
-        self.assertAlmostEqual(A.norm('l1'), A1.norm('l1'))
 
 
 class VectorViewTest(unittest.TestCase):
@@ -79,8 +61,8 @@ class VectorViewTest(unittest.TestCase):
         assemble(L, tensor=x)
         t_assemble = toc()
 
-        # Upper bound on dof count (including ghosts)
-        num_dofs = V.dofmap().max_cell_dimension()*mesh.num_cells()
+        # Number DOFs including ghosts; Lagrange deg 1 assumend
+        num_dofs = mesh.num_vertices()
         ind = np.arange(num_dofs, dtype='uintp')
 
         x1 = x.copy()
@@ -88,7 +70,6 @@ class VectorViewTest(unittest.TestCase):
 
         tic()
         y = VectorView(x1, V.dim(), ind)
-        del ind # Check that ind is not garbage collected prematuraly
         t_vecview_constructor = toc()
         self.assertLess(t_vecview_constructor, 0.5)
 
@@ -97,13 +78,34 @@ class VectorViewTest(unittest.TestCase):
         t_assemble_vecview = toc()
         self.assertLess(t_assemble_vecview, 2.0*t_assemble)
 
-        print 'Timings:'
-        print '  Regular assemble        ', t_assemble
-        print '  Assemble into VectorView', t_assemble_vecview
-
         x1 -= x
         errornorm = x1.norm('linf')
         self.assertAlmostEqual(errornorm, 0.0)
+
+        # Shuffle DOFs; owned and ghosts separately
+        range = V.dofmap().ownership_range()
+        num_owned_dofs = range[1] - range[0]
+        random.seed(42)
+        random.shuffle(ind[:num_owned_dofs ])
+        random.shuffle(ind[ num_owned_dofs:])
+
+        x1.zero() # NOTE: VectorView.zero,norm not yet implemented, so calling to x1
+        tic()
+        assemble(L, tensor=y, add_values=True)
+        t_assemble_vecview_shuffled = toc()
+
+        # Compare norms
+        self.assertAlmostEqual(x.norm('l1'), x1.norm('l1'))
+
+        # Check that arrays are the same
+        # NOTE: Works only sequentially as we did not shuffle ghosts properly
+        if MPI.size(mpi_comm_world()) == 1:
+            self.assertAlmostEqual(sum(abs(x1.array()[ind[:num_owned_dofs]]-x.array())), 0.0)
+
+        print 'Timings:'
+        print '  Regular assemble                 ', t_assemble
+        print '  Assemble into VectorView         ', t_assemble_vecview
+        print '  Assemble into shuffled VectorView', t_assemble_vecview_shuffled
 
 
 if __name__ == "__main__":
