@@ -17,9 +17,9 @@ path = os.path.realpath(
          os.path.join(os.getcwd(), os.path.dirname(__file__)))
 
 code = open(path+"/MatrixView.h").read()
-module = compile_extension_module(code, cppargs='-g3')
+module = compile_extension_module(code, cppargs='-g -O2')
 MatrixView = store_args_decorator(module.MatrixView)
 
 code = open(path+"/VectorView.h").read()
-module = compile_extension_module(code, cppargs='-g3')
+module = compile_extension_module(code, cppargs='-g -O2')
 VectorView = store_args_decorator(module.VectorView)
