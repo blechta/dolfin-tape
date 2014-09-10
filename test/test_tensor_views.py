@@ -19,13 +19,12 @@ class BaseCase(unittest.TestCase):
         # Global number DOFs
         self.dim = V.dim()
 
-        # Number DOFs including ghosts; Lagrange deg 1 assumend
-        # TODO: What is a generic way to obtain it?
-        self.num_dofs = mesh.num_vertices()
-
         # Number owned DOFs
         range = V.dofmap().ownership_range()
         self.num_owned_dofs = range[1] - range[0]
+
+        # Array with global DOF indices indexed by local DOF indices
+        self.dofs = V.dofmap().tabulate_local_to_global_dofs()
 
 
 class LargeCase(BaseCase):
@@ -44,11 +43,8 @@ class LargeCase(BaseCase):
         A1 = A.copy()
         A1.zero()
 
-        # Indices providing Matrix/VectorView mapping
-        ind = np.arange(self.num_dofs, dtype='uintp')
-
         tic()
-        B = MatrixView(A1, self.dim, self.dim, ind, ind)
+        B = MatrixView(A1, self.dim, self.dim, self.dofs, self.dofs)
         t_matview_constructor = toc()
         self.assertLess(t_matview_constructor, 0.5)
 
@@ -78,8 +74,8 @@ class LargeCase(BaseCase):
         x1 = x.copy()
         x1.zero()
 
-        # Indices providing Matrix/VectorView mapping
-        ind = np.arange(self.num_dofs, dtype='uintp')
+        # Duplicate DOF mapping; we will modify it later
+        ind = self.dofs.copy()
 
         tic()
         y = VectorView(x1, self.dim, ind)
@@ -139,8 +135,8 @@ class SmallCase(BaseCase):
         as_backend_type(A1).mat().setOption(
                 PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
 
-        # Indices providing Matrix/VectorView mapping
-        ind = np.arange(self.num_dofs, dtype='uintp')
+        # Duplicate DOF mapping; we will modify it
+        ind = self.dofs.copy()
 
         # Shuffle DOFs; owned and ghosts separately
         random.seed(42)

@@ -171,7 +171,7 @@ namespace dolfin
       inds.resize(m);
       for (std::size_t i = 0; i < m; ++i)
         inds[i] = _inds[rows[i]];
-      _x->add_local(block, m, inds.data());
+      _x->add(block, m, inds.data());
     }
 
     /// Get all values on local process

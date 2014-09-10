@@ -179,7 +179,7 @@ namespace dolfin
         rowcols[0][i] = _rows[rows[i]];
       for (std::size_t i = 0; i < n; ++i)
         rowcols[1][i] = _cols[cols[i]];
-      _A->add_local(block, rowcols);
+      _A->add(block, rowcols);
     }
 
     /// Add multiple of given matrix (AXPY operation)
