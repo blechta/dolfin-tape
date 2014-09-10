@@ -12,8 +12,8 @@ vertex_colors.array()[:] = MeshColoring.color(mesh, np.array([0, 1, 0], dtype='u
 #vertex_colors.array()[:] = MeshColoring.color(mesh, np.array([0, mesh.topology().dim(), 0], dtype='uintp'))
 color_num = int(vertex_colors.array().max() - vertex_colors.array().min() + 1)
 
-int_limit = 2**63 - 1
-cell_partitions = [CellFunction('size_t', mesh, int_limit) for _ in xrange(color_num)]
+max_uintp = int(np.uintp(-1))
+cell_partitions = [CellFunction('size_t', mesh, max_uintp) for _ in xrange(color_num)]
 for v in vertices(mesh):
     p = vertex_colors[v]
     for c in cells(v):
