@@ -157,5 +157,40 @@ class SmallCase(BaseCase):
                     0.0)
 
 
+    def test_dummy_dofs_matrix(self):
+
+        A = Matrix()
+        AssemblerBase().init_global_tensor(A, Form(self.a))
+
+        # Duplicate DOF mapping; we will modify it
+        ind = self.dofs.copy()
+        # Max uintp DOF index should yield negative PetscInt
+        # which are be dropped on MatSetValues
+        ind[:] = np.uintp(-1)
+
+        B = MatrixView(A, self.dim, self.dim, ind, ind)
+        assemble(self.a, tensor=B, add_values=True)
+        self.assertAlmostEqual(A.norm('linf'), 0.0)
+
+
+    def test_dummy_dofs_vector(self):
+
+        x = Vector()
+        AssemblerBase().init_global_tensor(x, Form(self.L))
+        # Enforce dropping of negative indices on VecSetValues
+        as_backend_type(x).vec().setOption(
+                PETSc.Vec.Option.IGNORE_NEGATIVE_INDICES, True)
+
+        # Duplicate DOF mapping; we will modify it
+        ind = self.dofs.copy()
+        # Max uintp DOF index should yield negative PetscInt
+        # which are be dropped on VecSetValues
+        ind[:] = np.uintp(-1)
+
+        y = VectorView(x, self.dim, ind)
+        assemble(self.L, tensor=y, add_values=True)
+        self.assertAlmostEqual(x.norm('linf'), 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
