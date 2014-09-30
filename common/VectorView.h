@@ -37,6 +37,16 @@ namespace dolfin
     /// Destructor
     virtual ~VectorView() {}
 
+    /// Adds values of itself to supplied vector. User is responsible of
+    /// providing compatible vector; otherwise result is undefined.
+    void add_to_vector(std::shared_ptr<GenericVector> x) const
+    {
+      std::size_t n = x->local_size();
+      Array<double> array(n);
+      _x->get(array.data(), n, _inds.data());
+      x->add_local(array);
+    }
+
     //--- Implementation of the GenericTensor interface ---
 
     /// Set all entries to zero and keep any sparse structure
