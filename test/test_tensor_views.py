@@ -4,7 +4,7 @@ from petsc4py import PETSc
 import numpy as np
 import random
 
-from common import MatrixView, VectorView
+from common import MatrixView, VectorView, la_index
 
 class BaseCase(unittest.TestCase):
 
@@ -43,8 +43,11 @@ class LargeCase(BaseCase):
         A1 = A.copy()
         A1.zero()
 
+        # Cast mapping to PetscInt
+        ind = self.dofs.astype(la_index)
+
         tic()
-        B = MatrixView(A1, self.dim, self.dim, self.dofs, self.dofs)
+        B = MatrixView(A1, self.dim, self.dim, ind, ind)
         t_matview_constructor = toc()
         self.assertLess(t_matview_constructor, 0.5)
 
@@ -74,8 +77,8 @@ class LargeCase(BaseCase):
         x1 = x.copy()
         x1.zero()
 
-        # Duplicate DOF mapping; we will modify it later
-        ind = self.dofs.copy()
+        # Cast mapping to PetscInt
+        ind = self.dofs.astype(la_index)
 
         tic()
         y = VectorView(x1, self.dim, ind)
@@ -135,8 +138,8 @@ class SmallCase(BaseCase):
         as_backend_type(A1).mat().setOption(
                 PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
 
-        # Duplicate DOF mapping; we will modify it
-        ind = self.dofs.copy()
+        # Cast mapping to PetscInt
+        ind = self.dofs.astype(la_index)
 
         # Shuffle DOFs; owned and ghosts separately
         random.seed(42)
@@ -162,11 +165,10 @@ class SmallCase(BaseCase):
         A = Matrix()
         AssemblerBase().init_global_tensor(A, Form(self.a))
 
-        # Duplicate DOF mapping; we will modify it
-        ind = self.dofs.copy()
-        # Max uintp DOF index should yield negative PetscInt
-        # which are be dropped on MatSetValues
-        ind[:] = np.uintp(-1)
+        # Cast mapping to PetscInt
+        ind = self.dofs.astype(la_index)
+        # Negative PetscInt are be dropped by VecSetValues
+        ind[:] = -1
 
         B = MatrixView(A, self.dim, self.dim, ind, ind)
         assemble(self.a, tensor=B, add_values=True)
@@ -182,10 +184,9 @@ class SmallCase(BaseCase):
                 PETSc.Vec.Option.IGNORE_NEGATIVE_INDICES, True)
 
         # Duplicate DOF mapping; we will modify it
-        ind = self.dofs.copy()
-        # Max uintp DOF index should yield negative PetscInt
-        # which are be dropped on VecSetValues
-        ind[:] = np.uintp(-1)
+        ind = self.dofs.astype(la_index)
+        # Negative PetscInt are be dropped by VecSetValues
+        ind[:] = -1
 
         y = VectorView(x, self.dim, ind)
         assemble(self.L, tensor=y, add_values=True)

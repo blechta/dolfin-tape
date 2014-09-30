@@ -2,9 +2,10 @@
 #define __MATRIX_VIEW_H
 
 #include <vector>
-#include <dolfin/la/GenericMatrix.h>
-#include <dolfin/common/Array.h>
 #include <dolfin/log/log.h>
+#include <dolfin/common/types.h>
+#include <dolfin/common/Array.h>
+#include <dolfin/la/GenericMatrix.h>
 
 namespace dolfin
 {
@@ -21,11 +22,11 @@ namespace dolfin
     /// Constructor
     MatrixView(const std::shared_ptr<GenericMatrix> A,
                const std::size_t dim0, const std::size_t dim1,
-               const Array<std::size_t>& rows,
-               const Array<std::size_t>& cols)
+               const Array<la_index>& rows,
+               const Array<la_index>& cols)
       : _A(A), _dim0(dim0), _dim1(dim1),
-        _rows(rows.size(), const_cast<std::size_t*>(rows.data())),
-        _cols(rows.size(), const_cast<std::size_t*>(cols.data()))
+        _rows(rows.size(), const_cast<la_index*>(rows.data())),
+        _cols(rows.size(), const_cast<la_index*>(cols.data()))
     {
       // TODO: check indices?
     }
@@ -33,17 +34,17 @@ namespace dolfin
     /// Copy constructor
     MatrixView(const MatrixView& mv)
       : _A(mv._A), _dim0(mv._dim0), _dim1(mv._dim1),
-        _rows(mv._rows.size(), const_cast<std::size_t*>(mv._rows.data())),
-        _cols(mv._cols.size(), const_cast<std::size_t*>(mv._cols.data()))
+        _rows(mv._rows.size(), const_cast<la_index*>(mv._rows.data())),
+        _cols(mv._cols.size(), const_cast<la_index*>(mv._cols.data()))
     { }
 
     /// Destructor
     virtual ~MatrixView() { }
 
     /// Return indices
-    void inds(Array<std::size_t>& indices, std::size_t dim) const
+    void inds(Array<la_index>& indices, std::size_t dim) const
     {
-      const Array<std::size_t>* _inds;
+      const Array<la_index>* _inds;
       switch (dim)
       {
         case 0:
@@ -323,7 +324,7 @@ namespace dolfin
 
     std::size_t _dim0, _dim1;
 
-    Array<std::size_t> _rows, _cols;
+    Array<la_index> _rows, _cols;
 
   };
 

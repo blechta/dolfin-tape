@@ -1,14 +1,12 @@
 #ifndef __VECTOR_VIEW_H
 #define __VECTOR_VIEW_H
 
-//#include <algorithm>
-//#include <utility>
 #include <vector>
 #include <dolfin/log/log.h>
-//#include <dolfin/common/types.h>
+#include <dolfin/common/types.h>
 #include <dolfin/common/Array.h>
 #include <dolfin/la/TensorLayout.h>
-#include <dolfin/la/GenericTensor.h>
+#include <dolfin/la/GenericVector.h>
 
 namespace dolfin
 {
@@ -23,9 +21,9 @@ namespace dolfin
     /// Constructor
     VectorView(const std::shared_ptr<GenericVector> x,
                const std::size_t dim,
-               const Array<std::size_t>& inds)
+               const Array<la_index>& inds)
       : _x(x), _dim(dim),
-        _inds(inds.size(), const_cast<std::size_t*>(inds.data()))
+        _inds(inds.size(), const_cast<la_index*>(inds.data()))
     {
       // TODO: check indices?
     }
@@ -33,7 +31,7 @@ namespace dolfin
     /// Copy constructor
     VectorView(const VectorView& vv)
       : _x(vv._x), _dim(vv._dim),
-        _inds(vv._inds.size(), const_cast<std::size_t*>(vv._inds.data()))
+        _inds(vv._inds.size(), const_cast<la_index*>(vv._inds.data()))
     { }
 
     /// Destructor
@@ -393,7 +391,7 @@ namespace dolfin
 
     std::size_t _dim;
 
-    Array<std::size_t> _inds;
+    Array<la_index> _inds;
 
   };
 
