@@ -41,29 +41,6 @@ namespace dolfin
     /// Destructor
     virtual ~MatrixView() { }
 
-    /// Return indices
-    void inds(Array<la_index>& indices, std::size_t dim) const
-    {
-      const Array<la_index>* _inds;
-      switch (dim)
-      {
-        case 0:
-          _inds = &_rows;
-        case 1:
-          _inds = &_cols;
-        default:
-          dolfin_error("MatrixView.h",
-                       "return indices of MatrixView",
-                       "Supplied dim is wrong");
-      }
-      if (indices.size() != _inds->size())
-        dolfin_error("MatrixView.h",
-                     "return indices of MatrixView",
-                     "Size of supplied indices does not match");
-      for (std::size_t i = 0; i < indices.size(); ++i)
-        indices[i] = (*_inds)[i];
-    }
-
     /// Return size of given dimension
     virtual std::size_t size(std::size_t dim) const
     {
