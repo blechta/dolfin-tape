@@ -30,12 +30,16 @@ namespace dolfin
 
     /// Copy constructor
     VectorView(const VectorView& vv)
-      : _x(vv._x), _dim(vv._dim),
+      : _x(vv._x), _dim(vv._dim), _work(vv._work.size()),
         _inds(vv._inds.size(), const_cast<la_index*>(vv._inds.data()))
     { }
 
     /// Destructor
     virtual ~VectorView() {}
+
+    /// Resize work array for indices of given dim to given size
+    void resize_work_array(std::size_t dim, std::size_t size)
+    { dolfin_assert(dim==0); _work.resize(size); }
 
     /// Adds values of itself to supplied vector. User is responsible of
     /// providing compatible vector; otherwise result is undefined.
@@ -174,12 +178,14 @@ namespace dolfin
     virtual void add_local(const double* block, std::size_t m,
                            const dolfin::la_index* rows)
     {
-      // TODO: Dynamic allocation of memory?! Not good!
-      std::vector<dolfin::la_index> inds;
-      inds.resize(m);
+      if (m > _work.size())
+        dolfin_error("VectorView.h",
+                     "add to parent data vector",
+                     "work array too small (%d), required (%d). "
+                     "Call resize_work_array(0, %d)", _work.size(), m, m);
       for (std::size_t i = 0; i < m; ++i)
-        inds[i] = _inds[rows[i]];
-      _x->add(block, m, inds.data());
+        _work[i] = _inds[rows[i]];
+      _x->add(block, m, _work.data());
     }
 
     /// Get all values on local process
@@ -402,6 +408,8 @@ namespace dolfin
     std::size_t _dim;
 
     Array<la_index> _inds;
+
+    std::vector<la_index> _work;
 
   };
 

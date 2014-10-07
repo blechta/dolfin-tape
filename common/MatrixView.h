@@ -34,12 +34,29 @@ namespace dolfin
     /// Copy constructor
     MatrixView(const MatrixView& mv)
       : _A(mv._A), _dim0(mv._dim0), _dim1(mv._dim1),
+        _work0(mv._work0.size()), _work1(mv._work1.size()),
         _rows(mv._rows.size(), const_cast<la_index*>(mv._rows.data())),
         _cols(mv._cols.size(), const_cast<la_index*>(mv._cols.data()))
     { }
 
     /// Destructor
     virtual ~MatrixView() { }
+
+    /// Resize work array for indices of given dim to given size
+    void resize_work_array(std::size_t dim, std::size_t size)
+    {
+      switch (dim)
+      {
+        case 0:
+          _work0.resize(size); return;
+        case 1:
+          _work1.resize(size); return;
+        default:
+          dolfin_error("MatrixView.h",
+                       "resize work array",
+                       "wrong dim (%d)", dim);
+      }
+    }
 
     /// Return size of given dimension
     virtual std::size_t size(std::size_t dim) const
@@ -148,16 +165,17 @@ namespace dolfin
                            std::size_t m, const dolfin::la_index* rows,
                            std::size_t n, const dolfin::la_index* cols)
     {
-      // TODO: Dynamic allocation of memory?! Not good!
-      std::vector<std::vector<dolfin::la_index> > rowcols;
-      rowcols.resize(2);
-      rowcols[0].resize(m);
-      rowcols[1].resize(n);
+      if (m > _work0.size() || n > _work1.size())
+        dolfin_error("VectorView.h",
+                     "add to parent data vector",
+                     "work array(s) too small (%dx%d), required (%dx%d). "
+                     "Call resize_work_array(...)",
+                     _work0.size(), _work1.size(), m, n);
       for (std::size_t i = 0; i < m; ++i)
-        rowcols[0][i] = _rows[rows[i]];
+        _work0[i] = _rows[rows[i]];
       for (std::size_t i = 0; i < n; ++i)
-        rowcols[1][i] = _cols[cols[i]];
-      _A->add(block, rowcols);
+        _work1[i] = _cols[cols[i]];
+      _A->add(block, m, _work0.data(), n, _work1.data());
     }
 
     /// Add multiple of given matrix (AXPY operation)
@@ -302,6 +320,8 @@ namespace dolfin
     std::size_t _dim0, _dim1;
 
     Array<la_index> _rows, _cols;
+
+    std::vector<la_index> _work0, _work1;
 
   };
 
