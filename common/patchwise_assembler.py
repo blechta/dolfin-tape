@@ -2,7 +2,7 @@ from dolfin import *
 import numpy as np
 from petsc4py import PETSc
 
-from common import MatrixView, VectorView, la_index
+from common import MatrixView, VectorView, la_index, assemble
 
 parameters['graph_coloring_library'] = 'Boost'
 #parameters['graph_coloring_library'] = 'Zoltan'
