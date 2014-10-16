@@ -3,6 +3,7 @@ import numpy as np
 from petsc4py import PETSc
 
 from common import MatrixView, VectorView, la_index, assemble
+from common.utils import num_nonzeros
 
 parameters['graph_coloring_library'] = 'Boost'
 #parameters['graph_coloring_library'] = 'Zoltan'
@@ -47,6 +48,12 @@ RT = FunctionSpace(mesh, 'Raviart-Thomas', l+1)
 DG = FunctionSpace(mesh, 'Discontinuous Lagrange', l)
 W = RT*DG
 
+u, r = TrialFunctions(W)
+v, q = TestFunctions(W)
+
+# TODO: restrict dx to patches
+a = ( inner(u, v) - inner(r, div(v)) - inner(q, div(u)) )*dx
+
 gdim = mesh.geometry().dim()
 tdim = mesh.topology().dim()
 num_cells = mesh.num_cells()
@@ -64,10 +71,10 @@ def patch_dim(vertex):
     num_interior_facets = vertex.num_entities(tdim-1)
     num_patch_cells = vertex.num_entities(tdim)
     return num_interior_facets*dofs_per_facet + \
-           num_patch_cells*dofs_per_cell # - 1 # factorization to zero mean
+           num_patch_cells*dofs_per_cell - 1 # factorization to zero mean
 
 num_dofs_with_ghosts = W.dofmap().tabulate_local_to_global_dofs().size # TODO: Is it obtainable cheaply?
-patches_dim = tdim*dofs_per_facet*num_facets + (tdim + 1)*dofs_per_cell*num_cells
+patches_dim = tdim*dofs_per_facet*num_facets + (tdim + 1)*dofs_per_cell*num_cells - num_vertices # factorization to zero mean
 partitions_dim = [sum(patch_dim(v) for v in vertices(mesh) if vertex_colors[v] == p)
                   for p in range(color_num)]
 
@@ -83,7 +90,7 @@ dof_mapping = [np.empty(num_dofs_with_ghosts, dtype=la_index)
 dof_counter = patches_dim_offset
 facet_dofs = [W.dofmap().tabulate_entity_dofs(tdim - 1, f)
               for f in range(tdim + 1)]
-cell_dofs = W.dofmap().tabulate_entity_dofs(tdim, 0) #[:-1] # factorization to zero mean
+cell_dofs = W.dofmap().tabulate_entity_dofs(tdim, 0)
 for v in vertices(mesh):
     p = vertex_colors[v]
 
@@ -95,6 +102,9 @@ for v in vertices(mesh):
             if f.incident(v): # Zero-flux on patch boundary
                 local_dofs += W.dofmap().cell_dofs(c.index())[facet_dofs[j]].tolist()
         local_dofs += W.dofmap().cell_dofs(c.index())[cell_dofs].tolist()
+    # Remove one DG DOF per patch
+    # TODO: Is it correct?! Isn't it be RT cell momentum? Is it correct in parallel?!
+    local_dofs = local_dofs[:-1]
     local_dofs = np.unique(local_dofs)
 
     # Build global dofs
@@ -114,28 +124,75 @@ assert dof_counter == patches_dim + patches_dim_offset
 A = Matrix() # TODO: needs sparsity pattern!
 b = Vector()
 
-tl_A = TensorLayout(comm, np.array(2*(patches_dim,), dtype='uintp'), 0, 1,
-       np.array(2*((patches_dim_offset, patches_dim_offset + patches_dim), ),
-                dtype='uintp'), False)
-tl_b = TensorLayout(comm, np.array((patches_dim,), dtype='uintp'), 0, 1,
-       np.array(((patches_dim_offset, patches_dim_offset + patches_dim), ),
-                dtype='uintp'), False)
+patches_dim_global = MPI.sum(comm, patches_dim)
+
+tl_A = TensorLayout(comm,
+                    np.array(2*(patches_dim_global,), dtype='uintp'),
+                    0,
+                    1,
+                    np.array(2*((patches_dim_offset, patches_dim_offset + patches_dim), ), dtype='uintp'),
+                    True)
+
+tl_b = TensorLayout(comm,
+                    np.array((patches_dim_global,), dtype='uintp'),
+                    0,
+                    1,
+                    np.array(((patches_dim_offset, patches_dim_offset + patches_dim), ), dtype='uintp'),
+                    False)
+
+sp_A = tl_A.sparsity_pattern()
+sp_A.init(comm,
+          np.array(2*(patches_dim_global,), dtype='uintp'),
+          np.array(2*((patches_dim_offset, patches_dim_offset + patches_dim), ), dtype='uintp'),
+          [[],[]],
+          [[],[]],
+          1)
+
+for c in cells(mesh):
+    RT_dofs = W.sub(0).dofmap().cell_dofs(c.index())
+    DG_dofs = W.sub(1).dofmap().cell_dofs(c.index())
+    for p in range(color_num):
+        RT_dofs_patch = dof_mapping[p][RT_dofs]
+        DG_dofs_patch = dof_mapping[p][DG_dofs]
+        print RT_dofs_patch, DG_dofs_patch
+        RT_dofs_patch = RT_dofs_patch[RT_dofs_patch != -1]
+        DG_dofs_patch = DG_dofs_patch[DG_dofs_patch != -1]
+        print RT_dofs_patch, DG_dofs_patch
+        sp_A.insert_global([RT_dofs_patch, RT_dofs_patch])
+        sp_A.insert_global([RT_dofs_patch, DG_dofs_patch])
+        sp_A.insert_global([DG_dofs_patch, RT_dofs_patch])
+#sp_A.insert_global([range(patches_dim), range(patches_dim)]) # dense matrix
+sp_A.apply()
+print sp_A.num_nonzeros()
+print sp_A.num_nonzeros_diagonal()
+print sp_A.num_nonzeros_off_diagonal()
+print sp_A.num_local_nonzeros()
 
 # Empty map should do the same
 #tl.local_to_global_map[0] = np.arange(patches_dim_offset,
 #       patches_dim_offset + patches_dim, dtype='uintp')
+print rank, patches_dim
 
-# TODO: Sparsity patter missing!
-#A.init(tl_A)
 b.init(tl_b)
+print b.size(), b.local_size()
+# TODO: Sparsity patter missing!
+A.init(tl_A)
+#import pdb; pdb.set_trace()
+print A.size(0), A.size(1)
 #as_backend_type(A).mat().setOption(
 #    PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
+#as_backend_type(A).mat().setOption(
+#    PETSc.Mat.Option.KEEP_NONZERO_PATTERN, True)
+as_backend_type(A).mat().setOption(
+    PETSc.Mat.Option.IGNORE_ZERO_ENTRIES, True)
 # Enforce dropping of negative indices on VecSetValues
 as_backend_type(b).vec().setOption(
     PETSc.Vec.Option.IGNORE_NEGATIVE_INDICES, True)
 
-#A_patches = [MatrixView(A, W.dim(), W.dim(), dof_mapping[p], dof_mapping[p]) for p in range(color_num)]
-#[assemble(inner(TrialFunction(W), TestFunction(W))*dx, tensor=A_patches[p], add_values=True) for p in range(color_num)]
+A_patches = [MatrixView(A, W.dim(), W.dim(), dof_mapping[p], dof_mapping[p]) for p in range(color_num)]
+[assemble(a, tensor=A_patches[p], add_values=True, finalize_tensor=False) for p in range(color_num)]
+A.apply('add')
+print A.array()
 b_patches = [VectorView(b, W.dim(), dof_mapping[p]) for p in range(color_num)]
 #[assemble(TestFunctions(W)[1]*dx, tensor=b_patches[p], add_values=True) for p in range(color_num)]
 [assemble(TestFunctions(W)[1]*dx, tensor=b_patches[p], add_values=True) for p in [0]]
@@ -155,4 +212,36 @@ for b1 in b_patches:
 as_backend_type(w.vector()).update_ghost_values()
 print rank, w.vector().array()
 print rank, w.sub(1, deepcopy=True).vector().array()
-plot(w.sub(1), interactive=True)
+plot(w.sub(1), interactive=False)
+
+
+#==========================================================================
+print 'num nonzeros', num_nonzeros(as_backend_type(A))
+tic()
+Ac = PETScMatrix()
+A.compressed(Ac)
+A = Ac # Garbage collection
+print 'compression', toc()
+print 'num nonzeros', num_nonzeros(A)
+
+b = Vector()
+x = Vector()
+A.init_vector(b, 0)
+A.init_vector(x, 1)
+
+#methods = ['mumps', 'petsc', 'umfpack', 'superlu', 'superlu_dist']
+#methods = ['mumps', 'umfpack', 'superlu', 'superlu_dist']
+methods = ['mumps']
+PETScOptions.set('mat_mumps_icntl_4', 3)
+for method in methods:
+    solver = PETScLUSolver(method)
+    solver.set_operator(A)
+    solver.parameters['verbose'] = True
+    solver.parameters['symmetric'] = True
+    solver.parameters['reuse_factorization'] = True
+    tic()
+    solver.solve(x, b)
+    print method, toc()
+    tic()
+    solver.solve(x, b)
+    print method, toc()
