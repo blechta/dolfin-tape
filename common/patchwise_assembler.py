@@ -70,11 +70,16 @@ mesh.init(0, tdim)
 def patch_dim(vertex):
     num_interior_facets = vertex.num_entities(tdim-1)
     num_patch_cells = vertex.num_entities(tdim)
-    return num_interior_facets*dofs_per_facet + \
-           num_patch_cells*dofs_per_cell - 1 # factorization to zero mean
+    patch_dim = num_interior_facets*dofs_per_facet + num_patch_cells*dofs_per_cell
+    # Remove one DG DOF per patch
+    if not vertex.is_shared() or rank <= min(vertex.sharing_processes()):
+        patch_dim -= 1
+    return patch_dim
 
 num_dofs_with_ghosts = W.dofmap().tabulate_local_to_global_dofs().size # TODO: Is it obtainable cheaply?
-patches_dim = tdim*dofs_per_facet*num_facets + (tdim + 1)*dofs_per_cell*num_cells - num_vertices # factorization to zero mean
+patches_dim = tdim*dofs_per_facet*num_facets + (tdim + 1)*dofs_per_cell*num_cells
+# Remove one DG DOF per patch
+patches_dim -= sum(1 for v in vertices(mesh) if not v.is_shared() or rank <= min(v.sharing_processes()))
 partitions_dim = [sum(patch_dim(v) for v in vertices(mesh) if vertex_colors[v] == p)
                   for p in range(color_num)]
 
@@ -103,8 +108,9 @@ for v in vertices(mesh):
                 local_dofs += W.dofmap().cell_dofs(c.index())[facet_dofs[j]].tolist()
         local_dofs += W.dofmap().cell_dofs(c.index())[cell_dofs].tolist()
     # Remove one DG DOF per patch
-    # TODO: Is it correct?! Isn't it be RT cell momentum? Is it correct in parallel?!
-    local_dofs = local_dofs[:-1]
+    # TODO: Is it correct?! Isn't it be RT cell momentum?
+    if not v.is_shared() or rank <= min(v.sharing_processes()):
+        local_dofs = local_dofs[:-1]
     local_dofs = np.unique(local_dofs)
 
     # Build global dofs
