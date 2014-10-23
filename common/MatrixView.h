@@ -194,7 +194,7 @@ namespace dolfin
       return 0.0;
     }
 
-    /// Get non-zero values of given row on local process
+    /// Get non-zero values of given row (global index) on local process
     virtual void getrow(std::size_t row, std::vector<std::size_t>& columns,
                         std::vector<double>& values) const
     {
@@ -202,7 +202,7 @@ namespace dolfin
       dolfin_not_implemented();
     }
 
-    /// Set values for given row on local process
+    /// Set values for given row (global index) on local process
     virtual void setrow(std::size_t row,
                         const std::vector<std::size_t>& columns,
                         const std::vector<double>& values)
@@ -211,8 +211,15 @@ namespace dolfin
       dolfin_not_implemented();
     }
 
-    /// Set given rows to zero
+    /// Set given rows (global row indices) to zero
     virtual void zero(std::size_t m, const dolfin::la_index* rows)
+    {
+      //TODO: implement!
+      dolfin_not_implemented();
+    }
+
+    /// Set given rows (local row indices) to zero
+    virtual void zero_local(std::size_t m, const dolfin::la_index* rows)
     {
       //TODO: implement!
       dolfin_not_implemented();
