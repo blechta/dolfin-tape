@@ -19,8 +19,11 @@ vertex_colors = VertexFunction('size_t', mesh)
 # TODO: These should give same result; which is cheaper?
 vertex_colors.array()[:] = MeshColoring.color(mesh, np.array([0, 1, 0], dtype='uintp'))
 #vertex_colors.array()[:] = MeshColoring.color(mesh, np.array([0, mesh.topology().dim(), 0], dtype='uintp'))
-# TODO: Isn't MPI.max needed here?!
-color_num = int(vertex_colors.array().max() - vertex_colors.array().min() + 1)
+color_num_local = int(vertex_colors.array().ptp()) + 1
+#TODO: Is it really needed? Optimally remove it
+#TODO: Switch to proper MPI int function
+color_num = int(MPI.max(comm, color_num_local))
+assert color_num >= color_num_local if size > 1 else color_num == color_num_local
 
 max_uintp = int(np.uintp(-1))
 cell_partitions = [CellFunction('size_t', mesh, max_uintp) for _ in xrange(color_num)]
@@ -29,19 +32,10 @@ for v in vertices(mesh):
     for c in cells(v):
         cell_partitions[p][c] = p
 
-plot(vertex_colors)
-for cp in cell_partitions:
-    plot(cp)
+#plot(vertex_colors)
+#for cp in cell_partitions:
+#    plot(cp)
 #interactive()
-
-
-#c = Cell(mesh, 0)
-#print 'cell', rank, c.global_index()
-#v = Vertex(mesh, 0)
-#print 'vertex', rank, v.global_index()
-#f = Facet(mesh, 0)
-#DistributedMeshTools.number_entities(mesh, 1)
-#print 'facet', rank, f.global_index()
 
 l = 0
 RT = FunctionSpace(mesh, 'Raviart-Thomas', l+1)
@@ -71,31 +65,42 @@ def patch_dim(vertex):
     num_interior_facets = vertex.num_entities(tdim-1)
     num_patch_cells = vertex.num_entities(tdim)
     patch_dim = num_interior_facets*dofs_per_facet + num_patch_cells*dofs_per_cell
-    # Remove one DG DOF per patch
-    if not vertex.is_shared() or rank <= min(vertex.sharing_processes()):
+    # Remove one DG DOF per interior patch
+    # TODO: this lowest rank distribution is not even!
+    if not on_boundary(vertex) and \
+      (not vertex.is_shared() or rank <= min(vertex.sharing_processes())):
         patch_dim -= 1
     return patch_dim
 
-num_dofs_with_ghosts = W.dofmap().tabulate_local_to_global_dofs().size # TODO: Is it obtainable cheaply?
+mesh.init(tdim-1, tdim)
+def on_boundary(vertex):
+    return any(f.exterior() for f in facets(vertex))
+
+num_dofs_with_ghosts = W.dofmap().tabulate_local_to_global_dofs().size # TODO: pull request #175
 patches_dim = tdim*dofs_per_facet*num_facets + (tdim + 1)*dofs_per_cell*num_cells
-# Remove one DG DOF per patch
-patches_dim -= sum(1 for v in vertices(mesh) if not v.is_shared() or rank <= min(v.sharing_processes()))
+# Remove one DG DOF per interior patch
+# TODO: this lowest rank distribution is not even!
+patches_dim -= sum(1 for v in vertices(mesh) if
+        not on_boundary(v) and \
+       (not v.is_shared() or rank <= min(v.sharing_processes())))
 partitions_dim = [sum(patch_dim(v) for v in vertices(mesh) if vertex_colors[v] == p)
                   for p in range(color_num)]
 
 assert sum(patch_dim(v) for v in vertices(mesh)) == patches_dim
 assert sum(partitions_dim) == patches_dim
 
-patches_dim_offset = MPI.global_offset(comm, patches_dim, True)
-
 # Construct mapping of (rank-local) W dofs to (rank-global) patch-wise problems
 dof_mapping = [np.empty(num_dofs_with_ghosts, dtype=la_index)
                for p in range(color_num)]
 [dof_mapping[p].fill(-1) for p in range(color_num)]
-dof_counter = patches_dim_offset
+dof_counter = 0
 facet_dofs = [W.dofmap().tabulate_entity_dofs(tdim - 1, f)
               for f in range(tdim + 1)]
 cell_dofs = W.dofmap().tabulate_entity_dofs(tdim, 0)
+local_ownership_size = W.dofmap().ownership_range()[1] - W.dofmap().ownership_range()[0]
+local_to_global = W.dofmap().local_to_global_index
+shared_nodes = W.dofmap().shared_nodes()
+shared_dofs = {r: {} for r in sorted(W.dofmap().neighbours())}
 for v in vertices(mesh):
     p = vertex_colors[v]
 
@@ -104,55 +109,190 @@ for v in vertices(mesh):
     for c in cells(v):
         # TODO: Je to dobre? Je zde j spravny index facety?
         for j, f in enumerate(facets(c)):
+            # TODO: Don't call DofMap.cell_dofs redundantly
             if f.incident(v): # Zero-flux on patch boundary
                 local_dofs += W.dofmap().cell_dofs(c.index())[facet_dofs[j]].tolist()
         local_dofs += W.dofmap().cell_dofs(c.index())[cell_dofs].tolist()
-    # Remove one DG DOF per patch
-    # TODO: Is it correct?! Isn't it be RT cell momentum?
-    if not v.is_shared() or rank <= min(v.sharing_processes()):
+    # Remove one DG DOF per interior patch
+    # TODO: this lowest rank distribution is not even!
+    if not on_boundary(v) and \
+      (not v.is_shared() or rank <= min(v.sharing_processes())):
+        # TODO: This assertion is very costly!! Rework!
+        assert local_dofs[-1] in W.sub(1).dofmap().dofs()-W.sub(1).dofmap().ownership_range()[0], \
+            (local_dofs, W.sub(1).dofmap().dofs()-W.sub(1).dofmap().ownership_range()[0])
+        # TODO: Is it correct?! Isn't it be RT cell momentum?
         local_dofs = local_dofs[:-1]
-    local_dofs = np.unique(local_dofs)
+    # Exclude unowned DOFs
+    local_dofs = np.unique(dof for dof in local_dofs if dof < local_ownership_size)
+    if local_dofs.size == 0:
+        # TODO: Should this happen?!
+        continue
+    assert local_dofs.min() >= 0 and local_dofs.max() < local_ownership_size
 
-    # Build global dofs
-    num_dofs = patch_dim(v)
-    assert num_dofs == len(local_dofs)
+    ## Build global dofs
+    #num_dofs = patch_dim(v)
+    #assert num_dofs == len(local_dofs)
+    # Store to array; now with local indices
+    num_dofs = len(local_dofs)
+    assert num_dofs==patch_dim(v) if size==1 else num_dofs<=patch_dim(v)
     global_dofs = np.arange(dof_counter, dof_counter + num_dofs, dtype=la_index)
 
     # Store mapping and increase counter
     dof_mapping[p][local_dofs] = global_dofs
     dof_counter += num_dofs
 
-assert dof_counter == patches_dim + patches_dim_offset
+    # Prepare shared dofs
+    global_vertex_index = None
+    for dof in local_dofs:
+        # TODO: Check that dof is facet dof
+        sharing_processes = shared_nodes.get(dof)
+        if sharing_processes is None:
+            continue
+        if global_vertex_index is None:
+            global_vertex_index = v.global_index()
+        assert sharing_processes.size == 1
+        global_dof = local_to_global(dof)
+        r = sharing_processes[0]
+        l = shared_dofs[r].get(global_dof)
+        if l is None:
+            l = shared_dofs[r][global_dof] = []
+        l += [global_vertex_index, dof_mapping[p][dof]]
 
-#print rank, dof_mapping
+#assert dof_counter == patches_dim + patches_dim_offset
+assert dof_counter==patches_dim if size==1 else dof_counter<=patches_dim
+
+patches_dim_owned = dof_counter
+patches_dim_offset = MPI.global_offset(comm, patches_dim_owned, True)
+for p in range(color_num):
+    dof_mapping[p][dof_mapping[p]>=0] += patches_dim_offset # TODO: can we do it more clever?
+for d1 in shared_dofs.itervalues():
+    for l in d1.itervalues():
+        assert len(l) == 2*tdim
+        for i in range(len(l)/2):
+            l[2*i+1] += patches_dim_offset
+
+from itertools import chain
+# TODO: Je zarucene poradi hodnot ve slovniku?!?
+c = chain.from_iterable(chain([v], data) for d in shared_dofs.itervalues()
+                                         for v, data in d.iteritems())
+sendbuf = np.fromiter(c, dtype=la_index)
+num_shared_unowned = - W.dofmap().ownership_range()[1] \
+                     + W.dofmap().ownership_range()[0] \
+                     + W.dofmap().tabulate_local_to_global_dofs().size # TODO: Avoid this costly function!
+num_shared_owned = len(shared_nodes) - num_shared_unowned
+recvbuf = np.empty((2*tdim+1)*num_shared_unowned, dtype=la_index)
+sendcounts = np.zeros(size, dtype='intc')
+senddispls = np.zeros(size, dtype='intc')
+recvcounts = np.zeros(size, dtype='intc')
+recvdispls = np.zeros(size, dtype='intc')
+for dof, ranks in shared_nodes.iteritems():
+    assert ranks.size == 1
+    r = ranks[0]
+    if dof < local_ownership_size:
+        sendcounts[r]    += 2*tdim + 1
+        senddispls[r+1:] += 2*tdim + 1
+    else:
+        recvcounts[r]    += 2*tdim + 1
+        recvdispls[r+1:] += 2*tdim + 1
+
+assert sendcounts.sum() == sendbuf.size
+assert recvcounts.sum() == recvbuf.size
+
+# MPI_Alltoallv
+from mpi4py.MPI import INT as MPI_INT # TODO: adapt to la_index
+comm.tompi4py().Alltoallv((sendbuf, (sendcounts, senddispls), MPI_INT),
+                          (recvbuf, (recvcounts, recvdispls), MPI_INT))
+
+
+# Maps from unowned local patch dof to owning rank; Rp: ip' -> r
+off_process_owner = np.empty(patches_dim-patches_dim_owned, dtype='intc')
+# Maps from unowned local patch dof to global patch dof; Cp': ip' -> Ip
+local_to_global_patches = np.empty(patches_dim-patches_dim_owned, dtype=la_index)
+
+# Add unowned DOFs to dof_mapping
+dof_counter = 0
+mesh.init(tdim-1, tdim)
+for c in cells(mesh):
+    c_dofs =  W.dofmap().cell_dofs(c.index())
+    # TODO: Is this indexing correct?
+    for i, f in enumerate(facets(c)):
+        if f.num_entities(tdim) == 2 or f.exterior():
+            continue
+        f_dofs = [dof for dof in c_dofs[facet_dofs[i]]
+                      if dof>=local_ownership_size]
+        if len(f_dofs) == 0:
+            continue
+        for dof in f_dofs:
+            global_index = local_to_global(dof)
+            # TODO: restrict search to relevant process
+            # TODO: optimize this!
+            indices = recvbuf[::2*tdim+1]
+            assert indices.size*tdim == patches_dim-patches_dim_owned
+            # TODO: THIS MAY YIELD QUADRATIC SCALING !!!!!!!
+            j = np.where(indices==global_index)
+            assert len(j)==1 and j[0].size==1
+            j = (2*tdim + 1) * j[0][0]
+            assert recvbuf[j]==global_index
+            vertex_indices = recvbuf[j+1:j+1+2*tdim:2]
+            patch_dofs     = recvbuf[j+2:j+2+2*tdim:2]
+            # TODO: Maybe use DofMap::off_process_owner function
+            ranks = shared_nodes[dof]
+            assert ranks.size == 1
+            r = ranks[0]
+
+            for v in vertices(f):
+                p = vertex_colors[v]
+                k = np.where(vertex_indices==v.global_index())
+                assert len(k)==1 and k[0].size==1
+                k = k[0][0]
+                dof_mapping[p][dof] = patch_dofs[k]
+
+                off_process_owner[dof_counter] = r
+                local_to_global_patches[dof_counter] = patch_dofs[k]
+                dof_counter += 1
+
+assert dof_counter == patches_dim - patches_dim_owned
+#TODO: Consider sorting (local_to_global_patches, off_process_owner)
+
 # TODO: validity of dof_mapping needs to be tested!
 
-A = Matrix() # TODO: needs sparsity pattern!
+A = Matrix()
 b = Vector()
 
-patches_dim_global = MPI.sum(comm, patches_dim)
+patches_dim_global = MPI.sum(comm, patches_dim_owned)
 
 tl_A = TensorLayout(comm,
                     np.array(2*(patches_dim_global,), dtype='uintp'),
                     0,
                     1,
-                    np.array(2*((patches_dim_offset, patches_dim_offset + patches_dim), ), dtype='uintp'),
+                    np.array(2*((patches_dim_offset, patches_dim_offset + patches_dim_owned), ), dtype='uintp'),
                     True)
 
 tl_b = TensorLayout(comm,
                     np.array((patches_dim_global,), dtype='uintp'),
                     0,
                     1,
-                    np.array(((patches_dim_offset, patches_dim_offset + patches_dim), ), dtype='uintp'),
+                    np.array(((patches_dim_offset, patches_dim_offset + patches_dim_owned), ), dtype='uintp'),
                     False)
 
 sp_A = tl_A.sparsity_pattern()
 sp_A.init(comm,
           np.array(2*(patches_dim_global,), dtype='uintp'),
-          np.array(2*((patches_dim_offset, patches_dim_offset + patches_dim), ), dtype='uintp'),
-          [[],[]],
-          [[],[]],
+          np.array(2*((patches_dim_offset, patches_dim_offset + patches_dim_owned), ), dtype='uintp'),
+          [local_to_global_patches, local_to_global_patches],
+          [off_process_owner, []],
           1)
+
+# TODO: Can we preallocate dict? Or do it otherwise better?
+global_to_local_patches_dict = {}
+for i, j in enumerate(local_to_global_patches):
+    global_to_local_patches_dict[j] = i + patches_dim_owned
+assert size > 1 or len(global_to_local_patches_dict) == 0
+def global_to_local_patches(global_patch_dof):
+    if patches_dim_offset <= global_patch_dof < patches_dim_offset + patches_dim_owned:
+        return global_patch_dof - patches_dim_offset
+    else:
+        return global_to_local_patches_dict[global_patch_dof]
 
 for c in cells(mesh):
     RT_dofs = W.sub(0).dofmap().cell_dofs(c.index())
@@ -160,37 +300,42 @@ for c in cells(mesh):
     for p in range(color_num):
         RT_dofs_patch = dof_mapping[p][RT_dofs]
         DG_dofs_patch = dof_mapping[p][DG_dofs]
-        print RT_dofs_patch, DG_dofs_patch
         RT_dofs_patch = RT_dofs_patch[RT_dofs_patch != -1]
         DG_dofs_patch = DG_dofs_patch[DG_dofs_patch != -1]
-        print RT_dofs_patch, DG_dofs_patch
-        sp_A.insert_global([RT_dofs_patch, RT_dofs_patch])
-        sp_A.insert_global([RT_dofs_patch, DG_dofs_patch])
-        sp_A.insert_global([DG_dofs_patch, RT_dofs_patch])
-#sp_A.insert_global([range(patches_dim), range(patches_dim)]) # dense matrix
+        RT_dofs_patch_owned_mask = np.logical_and(RT_dofs_patch >= patches_dim_offset,
+                                                  RT_dofs_patch <  patches_dim_offset + patches_dim_owned)
+        assert size > 1 or RT_dofs_patch_owned_mask.all()
+        RT_dofs_patch_unowned_mask = np.logical_not(RT_dofs_patch_owned_mask)
+        RT_dofs_patch_owned   = RT_dofs_patch[RT_dofs_patch_owned_mask]
+        RT_dofs_patch_unowned = RT_dofs_patch[RT_dofs_patch_unowned_mask]
+        sp_A.insert_global([RT_dofs_patch_owned, RT_dofs_patch])
+        sp_A.insert_global([RT_dofs_patch_owned, DG_dofs_patch])
+        sp_A.insert_global([DG_dofs_patch,       RT_dofs_patch])
+        sp_A.insert_global([DG_dofs_patch,       DG_dofs_patch]) # TODO: Remove this!
+        if RT_dofs_patch_unowned.size > 0:
+            assert size > 1
+            DG_dofs_patch = map(global_to_local_patches, DG_dofs_patch)
+            RT_dofs_patch = map(global_to_local_patches, RT_dofs_patch)
+            RT_dofs_patch_unowned = map(global_to_local_patches, RT_dofs_patch_unowned)
+            sp_A.insert_local([RT_dofs_patch_unowned, RT_dofs_patch])
+            sp_A.insert_local([RT_dofs_patch_unowned, DG_dofs_patch])
 sp_A.apply()
-print sp_A.num_nonzeros()
-print sp_A.num_nonzeros_diagonal()
-print sp_A.num_nonzeros_off_diagonal()
-print sp_A.num_local_nonzeros()
-
-# Empty map should do the same
-#tl.local_to_global_map[0] = np.arange(patches_dim_offset,
-#       patches_dim_offset + patches_dim, dtype='uintp')
-print rank, patches_dim
 
 b.init(tl_b)
-print b.size(), b.local_size()
-# TODO: Sparsity patter missing!
 A.init(tl_A)
-#import pdb; pdb.set_trace()
-print A.size(0), A.size(1)
-#as_backend_type(A).mat().setOption(
-#    PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
-#as_backend_type(A).mat().setOption(
-#    PETSc.Mat.Option.KEEP_NONZERO_PATTERN, True)
+
+#PETScOptions.set('log_summary')
+#print parameters['use_petsc_signal_handler'], parameters['foo']
+
 as_backend_type(A).mat().setOption(
     PETSc.Mat.Option.IGNORE_ZERO_ENTRIES, True)
+#as_backend_type(A).mat().setOption(
+#    PETSc.Mat.Option.NEW_NONZERO_LOCATIONS, False)
+#as_backend_type(A).mat().setOption(
+#    PETSc.Mat.Option.NEW_NONZERO_LOCATION_ERR, True)
+#as_backend_type(A).mat().setOption(
+#    PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
+
 # Enforce dropping of negative indices on VecSetValues
 as_backend_type(b).vec().setOption(
     PETSc.Vec.Option.IGNORE_NEGATIVE_INDICES, True)
@@ -198,30 +343,18 @@ as_backend_type(b).vec().setOption(
 A_patches = [MatrixView(A, W.dim(), W.dim(), dof_mapping[p], dof_mapping[p]) for p in range(color_num)]
 [assemble(a, tensor=A_patches[p], add_values=True, finalize_tensor=False) for p in range(color_num)]
 A.apply('add')
-print A.array()
-b_patches = [VectorView(b, W.dim(), dof_mapping[p]) for p in range(color_num)]
-#[assemble(TestFunctions(W)[1]*dx, tensor=b_patches[p], add_values=True) for p in range(color_num)]
-[assemble(TestFunctions(W)[1]*dx, tensor=b_patches[p], add_values=True) for p in [0]]
-as_backend_type(b).update_ghost_values()
 
-print rank, 'mapping', [dof_mapping[p].size for p in range(color_num)]
-print rank, 'b', b.size(), b.local_size(), b.local_range()
-print rank, 'dofmap', W.dim(), W.dofmap().tabulate_local_to_global_dofs().size, W.dofmap().ownership_range()
+print A.norm('frobenius'), A.norm('l1'), A.norm('linf')
+if size == 1:
+    print as_backend_type(A).mat().isSymmetric(), as_backend_type(A).mat().isSymmetric(1e-6)
+#print as_backend_type(A).mat().isStructurallySymmetric()
+#print as_backend_type(A).mat().isSymmetricKnown()
+#arr = A.array()
+#ApAT = arr-arr.T
+#print sum(sum(abs(ApAT))), ApAT.min(), ApAT.max()
 
-w = Function(W)
-#as_backend_type(w.vector()).vec().setOption(
-#    PETSc.Vec.Option.IGNORE_NEGATIVE_INDICES, True)
-#[b1.add_to_vector(w.vector()) for b1 in b_patches]
-for b1 in b_patches:
-    b1.add_to_vector(w.vector())
-    b1.apply('add')
-as_backend_type(w.vector()).update_ghost_values()
-print rank, w.vector().array()
-print rank, w.sub(1, deepcopy=True).vector().array()
-plot(w.sub(1), interactive=False)
-
-
-#==========================================================================
+print 'mat size', A.size(0), A.size(1)
+print 'num cells*4', 4*mesh.num_cells() - mesh.num_vertices()
 print 'num nonzeros', num_nonzeros(as_backend_type(A))
 tic()
 Ac = PETScMatrix()
@@ -230,6 +363,19 @@ A = Ac # Garbage collection
 print 'compression', toc()
 print 'num nonzeros', num_nonzeros(A)
 
+print A.norm('frobenius'), A.norm('l1'), A.norm('linf')
+if size == 1:
+    print as_backend_type(A).mat().isSymmetric(), as_backend_type(A).mat().isSymmetric(1e-6)
+#exit()
+
+
+b_patches = [VectorView(b, W.dim(), dof_mapping[p]) for p in range(color_num)]
+#[assemble(TestFunctions(W)[1]*dx, tensor=b_patches[p], add_values=True) for p in range(color_num)]
+[assemble(TestFunctions(W)[1]*dx, tensor=b_patches[p], add_values=True) for p in [0]]
+as_backend_type(b).update_ghost_values()
+
+
+#==========================================================================
 b = Vector()
 x = Vector()
 A.init_vector(b, 0)
@@ -239,11 +385,14 @@ A.init_vector(x, 1)
 #methods = ['mumps', 'umfpack', 'superlu', 'superlu_dist']
 methods = ['mumps']
 PETScOptions.set('mat_mumps_icntl_4', 3)
+PETScOptions.set('mat_mumps_icntl_2', 6)
 for method in methods:
     solver = PETScLUSolver(method)
     solver.set_operator(A)
-    solver.parameters['verbose'] = True
-    solver.parameters['symmetric'] = True
+    #solver.parameters['verbose'] = True
+    # TODO: Problem je, ze PETSc MatConvertToTriples_seqaij_seqsbaij predpoklada, ze matice je
+    #       strukturalne symetricka pri alokaci, takze muze naalokovat spatnou delku vstupu pro MUMPS
+    #solver.parameters['symmetric'] = True
     solver.parameters['reuse_factorization'] = True
     tic()
     solver.solve(x, b)
