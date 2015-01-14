@@ -288,7 +288,7 @@ class FluxReconstructor(object):
                   np.array(2*((patches_dim_offset, patches_dim_offset + patches_dim_owned), ), dtype='uintp'),
                   [local_to_global_patches, local_to_global_patches],
                   [off_process_owner, []],
-                  1)
+                  np.array((1, 1), dtype='uintp'))
 
         # TODO: Can we preallocate dict? Or do it otherwise better?
         global_to_local_patches_dict = {}
