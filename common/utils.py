@@ -1,14 +1,12 @@
-from dolfin import as_backend_type, PETScMatrix, MPI, mpi_comm_world, tic, toc
+from dolfin import as_backend_type, PETScMatrix, MPI, mpi_comm_world, \
+                   tic, toc, la_index_dtype
+from mpi4py.MPI import __TypeDict__ as mpi_typedict
 import numpy as np
 
-__all__ = ['la_index', 'num_nonzeros']
+__all__ = ['la_index_mpitype', 'num_nonzeros']
 
-# TODO: What is the proper type for 64-bit PetscInt and how to determine it?
-#       Use dolfin.sizeof_la_index.
-# NOTE: Seems that la_index is not mapped properly in DOLFIN SWIG wrappers,
-#       see https://bitbucket.org/fenics-project/dolfin/issue/366
-la_index = np.intc
-
+def la_index_mpitype():
+    return mpi_typedict[np.dtype(la_index_dtype()).char]
 
 def num_nonzeros(A):
     # TODO: Rewrite to C++ for performance

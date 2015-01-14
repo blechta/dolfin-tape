@@ -2,8 +2,8 @@ from dolfin import *
 import numpy as np
 from petsc4py import PETSc
 
-from common import MatrixView, VectorView, la_index, assemble
-from common.utils import num_nonzeros
+from common import MatrixView, VectorView, assemble
+from common.utils import la_index_mpitype, num_nonzeros
 
 __all__ = ['FluxReconstructor']
 
@@ -97,7 +97,7 @@ class FluxReconstructor(object):
         assert sum(partitions_dim) == patches_dim
 
         # Construct mapping of (rank-local) W dofs to (rank-global) patch-wise problems
-        dof_mapping = [np.empty(num_dofs_with_ghosts, dtype=la_index)
+        dof_mapping = [np.empty(num_dofs_with_ghosts, dtype=la_index_dtype())
                        for p in range(color_num)]
         [dof_mapping[p].fill(-1) for p in range(color_num)]
         dof_counter = 0
@@ -142,7 +142,7 @@ class FluxReconstructor(object):
             # Store to array; now with local indices
             num_dofs = len(local_dofs)
             assert num_dofs==patch_dim(v) if size==1 else num_dofs<=patch_dim(v)
-            global_dofs = np.arange(dof_counter, dof_counter + num_dofs, dtype=la_index)
+            global_dofs = np.arange(dof_counter, dof_counter + num_dofs, dtype=la_index_dtype())
 
             # Store mapping and increase counter
             dof_mapping[p][local_dofs] = global_dofs
@@ -182,12 +182,12 @@ class FluxReconstructor(object):
         # TODO: Je zarucene poradi hodnot ve slovniku?!?
         c = chain.from_iterable(chain([v], data) for d in shared_dofs.itervalues()
                                                  for v, data in d.iteritems())
-        sendbuf = np.fromiter(c, dtype=la_index)
+        sendbuf = np.fromiter(c, dtype=la_index_dtype())
         num_shared_unowned = - W.dofmap().ownership_range()[1] \
                              + W.dofmap().ownership_range()[0] \
                              + W.dofmap().tabulate_local_to_global_dofs().size # TODO: Avoid this costly function!
         num_shared_owned = len(shared_nodes) - num_shared_unowned
-        recvbuf = np.empty((2*tdim+1)*num_shared_unowned, dtype=la_index)
+        recvbuf = np.empty((2*tdim+1)*num_shared_unowned, dtype=la_index_dtype())
         sendcounts = np.zeros(size, dtype='intc')
         senddispls = np.zeros(size, dtype='intc')
         recvcounts = np.zeros(size, dtype='intc')
@@ -206,15 +206,14 @@ class FluxReconstructor(object):
         assert recvcounts.sum() == recvbuf.size
 
         # MPI_Alltoallv
-        from mpi4py.MPI import INT as MPI_INT # TODO: adapt to la_index
-        comm.tompi4py().Alltoallv((sendbuf, (sendcounts, senddispls), MPI_INT),
-                                  (recvbuf, (recvcounts, recvdispls), MPI_INT))
+        comm.tompi4py().Alltoallv((sendbuf, (sendcounts, senddispls), la_index_mpitype()),
+                                  (recvbuf, (recvcounts, recvdispls), la_index_mpitype()))
 
 
         # Maps from unowned local patch dof to owning rank; Rp: ip' -> r
         off_process_owner = np.empty(patches_dim-patches_dim_owned, dtype='intc')
         # Maps from unowned local patch dof to global patch dof; Cp': ip' -> Ip
-        local_to_global_patches = np.empty(patches_dim-patches_dim_owned, dtype=la_index)
+        local_to_global_patches = np.empty(patches_dim-patches_dim_owned, dtype=la_index_dtype())
 
         # Add unowned DOFs to dof_mapping
         dof_counter = 0
