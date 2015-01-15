@@ -444,7 +444,7 @@ class FluxReconstructor(object):
         v, q = TestFunctions(W)
         b.zero()
 
-        [assemble( (-hat[p]*inner(grad(u), v) 
+        [assemble( (-hat[p]*inner(grad(u), v)
                     -hat[p]*f*q
                     +inner(grad(hat[p]), grad(u))*q)*dx,
                   tensor=b_patches[p], add_values=True)
@@ -460,10 +460,13 @@ class FluxReconstructor(object):
 
 
 if __name__ == '__main__':
+    import matplotlib.pyplot as plt
     import ufl
     ufl.set_level(ufl.INFO) # Enable info_{green,red,blue}
 
-    for N in [2**i for i in range(7)]:
+    results = ([], [], [], [])
+
+    for N in [2**i for i in range(2, 7)]:
         mesh = UnitSquareMesh(N, N)
         V = FunctionSpace(mesh, 'CG', 1)
         u, v = TrialFunction(V), TestFunction(V)
@@ -476,7 +479,7 @@ if __name__ == '__main__':
         u = Function(V)
         solve(a == L, u, bc)
 
-        reconstructor = FluxReconstructor(mesh, 1) # TODO: Is it correct degree?
+        reconstructor = FluxReconstructor(mesh, 2) # TODO: Is it correct degree?
         w = reconstructor.reconstruct(u, f)
         q = Function(w, 0)
 
@@ -488,5 +491,57 @@ if __name__ == '__main__':
 
         info_red('u l2-errornorm %g, q l2-errornorm %g)'%(u_err, q_err))
         plot(q)
+
+        # TODO: h is not generally constant!
+        h = sqrt(2.0)/N
+        results[0].append((N, V.dim()))
+        err_est = assemble(inner(grad(u)+q, grad(u)+q)*dx)**0.5 \
+                + h/pi*assemble(inner(f-div(q), f-div(q))*dx)**0.5
+        #e = u_ex - u
+        #energy_error = assemble(action(action(a, e), e))
+        e = project(u_ex, V)
+        e -= u
+        energy_error = assemble(inner(grad(e), grad(e))*dx)**0.5
+        info_red('Estimator %g, energy_error %g' % (err_est, energy_error))
+        results[1].append((err_est, energy_error))
+
+        DG0 = FunctionSpace(mesh, 'DG', 0)
+        #err0 = project(inner(grad(u)+q, grad(u)+q), DG0)
+        #err1 = project(inner(f-div(q), f-div(q)), DG0)
+        #err0 = err0.vector()
+        #err1 = err1.vector()
+        v = TestFunction(DG0)
+        err0 = assemble(inner(grad(u)+q, grad(u)+q)*v*dx)
+        err1 = assemble(inner(f-div(q), f-div(q))*v*dx)
+        for i in range(err0.local_size()):
+            err0[i] = float( err0[i]**0.5 + h/pi*err1[i]**0.5 )
+        err_est = err0.norm('l2')
+        info_red('Estimator %g, energy_error %g' % (err_est, energy_error))
+        results[2].append((err_est, energy_error))
+
+        err_est = assemble ( ( inner(grad(u)+q, grad(u)+q)**0.5
+                             + Constant(h/pi)*inner(f-div(q), f-div(q))**0.5
+                             )**2*dx
+                           ) ** 0.5
+        info_red('Estimator %g, energy_error %g' % (err_est, energy_error))
+        results[3].append((err_est, energy_error))
+
+    results = np.array(results, dtype='float')
+
+    plt.subplot(3, 1, 1)
+    plt.plot(results[0, :, 0], results[1, :, 0], 'o-')
+    plt.plot(results[0, :, 0], results[1, :, 1], 'o-')
+    plt.loglog()
+    plt.subplot(3, 1, 2)
+    plt.plot(results[0, :, 0], results[2, :, 0], 'o-')
+    plt.plot(results[0, :, 0], results[2, :, 1], 'o-')
+    plt.loglog()
+    plt.subplot(3, 1, 3)
+    plt.plot(results[0, :, 0], results[3, :, 0], 'o-')
+    plt.plot(results[0, :, 0], results[3, :, 1], 'o-')
+    plt.loglog()
+
+    plt.tight_layout()
+    plt.show(block=True)
 
     interactive()
