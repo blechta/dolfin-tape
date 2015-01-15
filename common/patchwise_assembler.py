@@ -464,7 +464,7 @@ if __name__ == '__main__':
     import ufl
     ufl.set_level(ufl.INFO) # Enable info_{green,red,blue}
 
-    results = ([], [], [], [])
+    results = ([], [], [], [], [])
 
     for N in [2**i for i in range(2, 7)]:
         mesh = UnitSquareMesh(N, N)
@@ -472,7 +472,7 @@ if __name__ == '__main__':
         u, v = TrialFunction(V), TestFunction(V)
         a = inner(grad(u), grad(v))*dx
         m, n = 1, 1
-        u_ex = Expression('sin(m*pi*x[0])*sin(n*pi*x[1])', m=m, n=n, degree=2)
+        u_ex = Expression('sin(m*pi*x[0])*sin(n*pi*x[1])', m=m, n=n, degree=4)
         f = Constant((m*m + n*n)*pi*pi)*u_ex
         L = f*v*dx
         bc = DirichletBC(V, 0.0, lambda x, b: b)
@@ -486,11 +486,16 @@ if __name__ == '__main__':
         u_err = errornorm(u_ex, u)
         q_ex = Expression(('-m*pi*cos(m*pi*x[0])*sin(n*pi*x[1])',
                            '-n*pi*sin(m*pi*x[0])*cos(n*pi*x[1])'),
-                           m=m, n=n, degree=2)
+                           m=m, n=n, degree=3)
         q_err = errornorm(q_ex, q)
 
-        info_red('u l2-errornorm %g, q l2-errornorm %g)'%(u_err, q_err))
+        info_red('u L2-errornorm %g, q L2-errornorm %g)'%(u_err, q_err))
+        results[4].append((0.0, q_err))
         plot(q)
+
+        Q = w.function_space().sub(0).collapse()
+        info_red('%g'%norm(project(grad(u)+q, Q)))
+        info_red('%g'%errornorm(q_ex, project(-grad(u), Q)))
 
         # TODO: h is not generally constant!
         h = sqrt(2.0)/N
@@ -499,9 +504,10 @@ if __name__ == '__main__':
                 + h/pi*assemble(inner(f-div(q), f-div(q))*dx)**0.5
         #e = u_ex - u
         #energy_error = assemble(action(action(a, e), e))
-        e = project(u_ex, V)
-        e -= u
-        energy_error = assemble(inner(grad(e), grad(e))*dx)**0.5
+        #e = project(u_ex, V)
+        #e -= u
+        #energy_error = assemble(inner(grad(e), grad(e))*dx)**0.5
+        energy_error = errornorm(u_ex, u, norm_type='H10')
         info_red('Estimator %g, energy_error %g' % (err_est, energy_error))
         results[1].append((err_est, energy_error))
 
@@ -528,17 +534,21 @@ if __name__ == '__main__':
 
     results = np.array(results, dtype='float')
 
-    plt.subplot(3, 1, 1)
+    plt.subplot(4, 1, 1)
     plt.plot(results[0, :, 0], results[1, :, 0], 'o-')
     plt.plot(results[0, :, 0], results[1, :, 1], 'o-')
     plt.loglog()
-    plt.subplot(3, 1, 2)
+    plt.subplot(4, 1, 2)
     plt.plot(results[0, :, 0], results[2, :, 0], 'o-')
     plt.plot(results[0, :, 0], results[2, :, 1], 'o-')
     plt.loglog()
-    plt.subplot(3, 1, 3)
+    plt.subplot(4, 1, 3)
     plt.plot(results[0, :, 0], results[3, :, 0], 'o-')
     plt.plot(results[0, :, 0], results[3, :, 1], 'o-')
+    plt.loglog()
+    plt.subplot(4, 1, 4)
+    plt.plot(results[0, :, 0], results[4, :, 0], 'o-')
+    plt.plot(results[0, :, 0], results[4, :, 1], 'o-')
     plt.loglog()
 
     plt.tight_layout()
