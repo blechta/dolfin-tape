@@ -2,8 +2,7 @@ from dolfin import *
 import numpy as np
 from petsc4py import PETSc
 
-from common import MatrixView, VectorView, assemble
-from common.utils import la_index_mpitype, num_nonzeros
+from common import MatrixView, VectorView, assemble, la_index_mpitype
 
 __all__ = ['FluxReconstructor']
 
