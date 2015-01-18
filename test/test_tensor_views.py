@@ -4,7 +4,7 @@ from petsc4py import PETSc
 import numpy as np
 import random
 
-from common import MatrixView, VectorView, assemble, la_index
+from common import MatrixView, VectorView, assemble
 
 class BaseCase(unittest.TestCase):
 
@@ -44,7 +44,7 @@ class LargeCase(BaseCase):
         A1.zero()
 
         # Cast mapping to PetscInt
-        ind = self.dofs.astype(la_index)
+        ind = self.dofs.astype(la_index_dtype())
 
         tic()
         B = MatrixView(A1, self.dim, self.dim, ind, ind)
@@ -78,7 +78,7 @@ class LargeCase(BaseCase):
         x1.zero()
 
         # Cast mapping to PetscInt
-        ind = self.dofs.astype(la_index)
+        ind = self.dofs.astype(la_index_dtype())
 
         tic()
         y = VectorView(x1, self.dim, ind)
@@ -139,7 +139,7 @@ class SmallCase(BaseCase):
                 PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
 
         # Cast mapping to PetscInt
-        ind = self.dofs.astype(la_index)
+        ind = self.dofs.astype(la_index_dtype())
 
         # Shuffle DOFs; owned and ghosts separately
         random.seed(42)
@@ -166,7 +166,7 @@ class SmallCase(BaseCase):
         AssemblerBase().init_global_tensor(A, Form(self.a))
 
         # Cast mapping to PetscInt
-        ind = self.dofs.astype(la_index)
+        ind = self.dofs.astype(la_index_dtype())
         # Negative PetscInt are be dropped by VecSetValues
         ind[:] = -1
 
@@ -184,7 +184,7 @@ class SmallCase(BaseCase):
                 PETSc.Vec.Option.IGNORE_NEGATIVE_INDICES, True)
 
         # Duplicate DOF mapping; we will modify it
-        ind = self.dofs.astype(la_index)
+        ind = self.dofs.astype(la_index_dtype())
         # Negative PetscInt are be dropped by VecSetValues
         ind[:] = -1
 
