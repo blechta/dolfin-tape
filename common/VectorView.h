@@ -47,6 +47,11 @@ namespace dolfin
     {
       std::size_t n = x->local_size();
       Array<double> array(n);
+      if (n > _inds.size())
+        dolfin_error("VectorView.h",
+                     "add to another vector",
+                     "Dimension of supplied vector (%d) is larger than "
+                     "indexing array (%d)", n, _inds.size());
       _x->get(array.data(), n, _inds.data());
       x->add_local(array);
     }

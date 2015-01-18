@@ -167,7 +167,7 @@ class SmallCase(BaseCase):
 
         # Cast mapping to PetscInt
         ind = self.dofs.astype(la_index_dtype())
-        # Negative PetscInt are be dropped by VecSetValues
+        # Negative PetscInt are be dropped by MatSetValues
         ind[:] = -1
 
         B = MatrixView(A, self.dim, self.dim, ind, ind)
@@ -183,7 +183,7 @@ class SmallCase(BaseCase):
         as_backend_type(x).vec().setOption(
                 PETSc.Vec.Option.IGNORE_NEGATIVE_INDICES, True)
 
-        # Duplicate DOF mapping; we will modify it
+        # Cast mapping to PetscInt
         ind = self.dofs.astype(la_index_dtype())
         # Negative PetscInt are be dropped by VecSetValues
         ind[:] = -1

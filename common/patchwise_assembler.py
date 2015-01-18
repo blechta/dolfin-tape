@@ -12,7 +12,7 @@ class FluxReconstructor(object):
 
         self._mesh = mesh
 
-        # Color mesh to pathes
+        # Color mesh vertices
         vertex_colors, color_num = self._color_patches(mesh)
         self._color_num = color_num
 
@@ -24,6 +24,9 @@ class FluxReconstructor(object):
         self._compress_matrix()
         self._setup_solver()
         self._build_hat_functions(vertex_colors)
+
+        # TODO: Clear unneeded mesh connectivity
+        # TODO: Delete unneeded tensor layouts and sparsity pattern
 
 
     @staticmethod
@@ -38,8 +41,7 @@ class FluxReconstructor(object):
         vertex_colors.array()[:] = MeshColoring.color(mesh, np.array([0, 1, 0], dtype='uintp'))
         #vertex_colors.array()[:] = MeshColoring.color(mesh, np.array([0, mesh.topology().dim(), 0], dtype='uintp'))
         color_num_local = int(vertex_colors.array().ptp()) + 1
-        #TODO: Is it really needed? Optimally remove it
-        #TODO: Switch to proper MPI int function
+        #TODO: Switch to proper MPI int function, as int() may round downwards!
         color_num = int(MPI.max(comm, color_num_local))
         assert color_num >= color_num_local if MPI.size(comm) > 1 else color_num == color_num_local
 
@@ -82,6 +84,7 @@ class FluxReconstructor(object):
         #PETScOptions.set('mat_mumps_icntl_2', 6)
 
         self._solver = solver = PETScLUSolver('mumps')
+        #self._solver = solver = PETScLUSolver('superlu_dist')
         solver.set_operator(self._A)
         # https://bitbucket.org/petsc/petsc/issue/81
         #solver.parameters['symmetric'] = True
@@ -90,21 +93,37 @@ class FluxReconstructor(object):
 
     def _build_hat_functions(self, vertex_colors):
         """Builds a list of hat functions for every partition."""
+        #FIXME: We create one P1 function for every partition and rank as
+        #       vertex coloring is not compatible across partition boundaries
+        #       hence hat functions need to be discontinuous. This is handled
+        #       by creating hat functions s.t. every single one takes hat
+        #       values on just one parition/rank combination. This is hack
+        #       (it may not be guaranteed that passing different cofficient
+        #       to form is correct) but moreover it is not scalable solution!
+
+        rank = MPI.rank(self._mesh.mpi_comm())
+        size = MPI.size(self._mesh.mpi_comm())
+
         # Define space, function and vector
         P1 = FunctionSpace(self._mesh, 'CG', 1)
-        self._hat = hat = [Function(P1) for _ in range(self._color_num)]
+        hat = [Function(P1) for _ in range(size*self._color_num)]
         hat_vec = [u.vector() for u in hat]
 
         # Build hat DOFs
-        hat_dofs = [np.zeros(x.local_size()) for x in hat_vec]
-        dof_to_vertex = dof_to_vertex_map(P1)
-        for dof, vertex in enumerate(dof_to_vertex):
-            hat_dofs[vertex_colors[int(vertex)]][dof] = 1.0
+        hat_dofs = [[] for x in hat_vec]
+        vertex_to_dof = vertex_to_dof_map(P1)
+        for vertex, dof in enumerate(vertex_to_dof):
+            hat_dofs[vertex_colors[int(vertex)]*size+rank].append(dof)
+        hat_dofs = [np.array(hd, dtype=la_index_dtype()) for hd in hat_dofs]
 
         # Assign
         for i, x in enumerate(hat_vec):
-            x[:] = hat_dofs[i]
-        assert all(near(u.vector().max(), 1.0) for u in hat)
+            if i % size == rank:
+                x.set_local(np.ones(hat_dofs[i].shape, dtype='float_'), hat_dofs[i])
+            x.apply('insert')
+
+        hat = [hat[p*size+rank] for p in range(self._color_num)]
+        self._hat = hat
 
 
     def _init_tensors(self):
@@ -113,9 +132,11 @@ class FluxReconstructor(object):
         patches_dim_global = self._patches_dim_global
         patches_dim_offset = self._patches_dim_offset
         patches_dim_owned = self._patches_dim_owned
+        patches_dim = self._patches_dim
         dof_mapping = self._dof_mapping
+        _local_to_global_patches = self._local_to_global_patches
 
-        # Prepare tensor layout and buld sparsity pattern
+        # Prepare tensor layout and build sparsity pattern
         tl_A = TensorLayout(comm,
                             np.array(2*(patches_dim_global,), dtype='uintp'),
                             0,
@@ -128,14 +149,34 @@ class FluxReconstructor(object):
                             1,
                             np.array(((patches_dim_offset, patches_dim_offset + patches_dim_owned), ), dtype='uintp'),
                             False)
+
+        # Write local_to_global to tensor layouts
+        # TODO: Is it needed?
+        local_to_global_patches = np.arange(patches_dim_offset, patches_dim_offset + patches_dim, dtype='uintp')
+        local_to_global_patches[patches_dim_owned:] = _local_to_global_patches
+        tl_A.local_to_global_map[0] = local_to_global_patches
+        tl_A.local_to_global_map[1] = local_to_global_patches
+        tl_b.local_to_global_map[0] = local_to_global_patches
+
         self._build_sparsity_pattern(tl_A.sparsity_pattern())
 
-        # Init tensors
-        self._A = A = Matrix()
-        self._b = b = Vector()
+        # Init matrix
+        self._A = A = PETScMatrix()
         A.init(tl_A)
-        b.init(tl_b)
-        self._x = x = b.copy()
+
+        ## Init vectors using tensor layout (without ghosts)
+        #self._b = b = PETScVector()
+        #b.init(tl_b)
+        #self._x = x = b.copy()
+
+        # Init vectors witht ghosts
+        # TODO: Is it needed?
+        self._b = b = PETScVector()
+        self._x = x = PETScVector()
+        b.init(comm, (patches_dim_offset, patches_dim_offset + patches_dim_owned),
+               local_to_global_patches, _local_to_global_patches)
+        x.init(comm, (patches_dim_offset, patches_dim_offset + patches_dim_owned),
+               local_to_global_patches, _local_to_global_patches)
 
         # Options to deal with zeros
         # TODO: Sort these options out
@@ -231,6 +272,7 @@ class FluxReconstructor(object):
         RT = FunctionSpace(mesh, 'Raviart-Thomas', degree+1)
         DG = FunctionSpace(mesh, 'Discontinuous Lagrange', degree)
         W = RT*DG
+        del RT, DG
         self._W = W
 
         gdim = mesh.geometry().dim()
@@ -246,16 +288,16 @@ class FluxReconstructor(object):
 
         mesh.init(0, tdim-1)
         mesh.init(0, tdim)
-        def patch_dim(vertex):
-            num_interior_facets = vertex.num_entities(tdim-1)
-            num_patch_cells = vertex.num_entities(tdim)
-            patch_dim = num_interior_facets*dofs_per_facet + num_patch_cells*dofs_per_cell
-            # Remove one DG DOF per interior patch
-            # TODO: this lowest rank distribution is not even!
-            if not on_boundary(vertex) and \
-              (not vertex.is_shared() or rank <= min(vertex.sharing_processes())):
-                patch_dim -= 1
-            return patch_dim
+        ##def patch_dim(vertex):
+        ##    num_interior_facets = vertex.num_entities(tdim-1)
+        ##    num_patch_cells = vertex.num_entities(tdim)
+        ##    patch_dim = num_interior_facets*dofs_per_facet + num_patch_cells*dofs_per_cell
+        ##    # Remove one DG DOF per interior patch
+        ##    # TODO: this lowest rank distribution is not even!
+        ##    if not on_boundary(vertex) and \
+        ##      (not vertex.is_shared() or rank <= min(vertex.sharing_processes())):
+        ##        patch_dim -= 1
+        ##    return patch_dim
 
         mesh.init(tdim-1, tdim)
         def on_boundary(vertex):
@@ -268,11 +310,12 @@ class FluxReconstructor(object):
         patches_dim -= sum(1 for v in vertices(mesh) if
                 not on_boundary(v) and \
                (not v.is_shared() or rank <= min(v.sharing_processes())))
-        partitions_dim = [sum(patch_dim(v) for v in vertices(mesh) if vertex_colors[v] == p)
-                          for p in range(color_num)]
+        self._patches_dim = patches_dim
+        ##partitions_dim = [sum(patch_dim(v) for v in vertices(mesh) if vertex_colors[v] == p)
+        ##                  for p in range(color_num)]
 
-        assert sum(patch_dim(v) for v in vertices(mesh)) == patches_dim
-        assert sum(partitions_dim) == patches_dim
+        ##assert sum(patch_dim(v) for v in vertices(mesh)) == patches_dim
+        ##assert sum(partitions_dim) == patches_dim
 
         # Construct mapping of (rank-local) W dofs to (rank-global) patch-wise problems
         self._dof_mapping = dof_mapping = [np.empty(num_dofs_with_ghosts, dtype=la_index_dtype())
@@ -319,7 +362,7 @@ class FluxReconstructor(object):
             #assert num_dofs == len(local_dofs)
             # Store to array; now with local indices
             num_dofs = len(local_dofs)
-            assert num_dofs==patch_dim(v) if size==1 else num_dofs<=patch_dim(v)
+            ##assert num_dofs==patch_dim(v) if size==1 else num_dofs<=patch_dim(v)
             global_dofs = np.arange(dof_counter, dof_counter + num_dofs, dtype=la_index_dtype())
 
             # Store mapping and increase counter
@@ -358,13 +401,15 @@ class FluxReconstructor(object):
                     l[2*i+1] += patches_dim_offset
 
         from itertools import chain
-        # TODO: Je zarucene poradi hodnot ve slovniku?!?
+        # FIXME: Natural dict order is by hashes hence pseudorandom!
         c = chain.from_iterable(chain([v], data) for d in shared_dofs.itervalues()
                                                  for v, data in d.iteritems())
         sendbuf = np.fromiter(c, dtype=la_index_dtype())
         num_shared_unowned = W.dofmap().local_dimension('unowned')
         num_shared_owned = len(shared_nodes) - num_shared_unowned
-        recvbuf = np.empty((2*tdim+1)*num_shared_unowned, dtype=la_index_dtype())
+        assert sendbuf.size == (2*tdim+1)*num_shared_owned
+        #recvbuf = np.empty((2*tdim+1)*num_shared_unowned, dtype=la_index_dtype())
+        recvbuf = 1000000*np.ones((2*tdim+1)*num_shared_unowned, dtype=la_index_dtype())
         sendcounts = np.zeros(size, dtype='intc')
         senddispls = np.zeros(size, dtype='intc')
         recvcounts = np.zeros(size, dtype='intc')
@@ -385,6 +430,7 @@ class FluxReconstructor(object):
         # MPI_Alltoallv
         comm.tompi4py().Alltoallv((sendbuf, (sendcounts, senddispls), la_index_mpitype()),
                                   (recvbuf, (recvcounts, recvdispls), la_index_mpitype()))
+        assert not np.any(recvbuf == 1000000)
 
         # Maps from unowned local patch dof to owning rank; Rp: ip' -> r
         self._off_process_owner = off_process_owner \
@@ -429,6 +475,7 @@ class FluxReconstructor(object):
                         k = np.where(vertex_indices==v.global_index())
                         assert len(k)==1 and k[0].size==1
                         k = k[0][0]
+                        assert 0 <= k < tdim
                         dof_mapping[p][dof] = patch_dofs[k]
 
                         off_process_owner[dof_counter] = r
@@ -440,7 +487,18 @@ class FluxReconstructor(object):
 
         # TODO: validity of dof_mapping needs to be tested!
 
-        self._patches_dim_global = patches_dim_global = MPI.sum(comm, patches_dim_owned)
+        self._patches_dim_global = MPI.sum(comm, patches_dim_owned)
+
+        # Debugging
+        #temp = np.ndarray((2+color_num, num_dofs_with_ghosts))
+        #local_dofs = np.arange(num_dofs_with_ghosts)
+        #global_dofs = map(local_to_global, local_dofs)
+        #temp[0] = local_dofs
+        #temp[1] = global_dofs
+        #for p in range(color_num):
+        #    patch_dofs = map(lambda dof: dof_mapping[p][dof], local_dofs)
+        #    temp[2+p] = patch_dofs
+        #print rank, '\n', temp.T
 
 
     def reconstruct(self, u, f):
@@ -456,19 +514,21 @@ class FluxReconstructor(object):
         solver = self._solver
 
         v, q = TestFunctions(W)
-        b.zero()
+        def L(p):
+            return ( -hat[p]*inner(grad(u), v)
+                     -hat[p]*f*q
+                     +inner(grad(hat[p]), grad(u))*q )*dx
 
-        [assemble( (-hat[p]*inner(grad(u), v)
-                    -hat[p]*f*q
-                    +inner(grad(hat[p]), grad(u))*q)*dx,
-                  tensor=b_patches[p], add_values=True)
-          for p in range(color_num)]
-        as_backend_type(b).update_ghost_values()
+        b.zero()
+        [assemble(L(p), tensor=b_patches[p], add_values=True, finalize_tensor=False)
+         for p in range(color_num)]
+        b.apply('add')
 
         solver.solve(x, b)
 
         w = Function(W)
         [xp.add_to_vector(w.vector()) for xp in x_patches]
+        w.vector().apply('add')
 
         return w
 
@@ -480,7 +540,7 @@ if __name__ == '__main__':
 
     results = ([], [], [], [], [])
 
-    for N in [2**i for i in range(2, 7)]:
+    for N in [2**i for i in range(2, 5)]:
         mesh = UnitSquareMesh(N, N)
         V = FunctionSpace(mesh, 'CG', 1)
         u, v = TrialFunction(V), TestFunction(V)
@@ -493,7 +553,7 @@ if __name__ == '__main__':
         u = Function(V)
         solve(a == L, u, bc)
 
-        reconstructor = FluxReconstructor(mesh, 2) # TODO: Is it correct degree?
+        reconstructor = FluxReconstructor(mesh, 1) # TODO: Is it correct degree?
         w = reconstructor.reconstruct(u, f)
         q = Function(w, 0)
 
@@ -539,6 +599,8 @@ if __name__ == '__main__':
         Q = w.function_space().sub(0).collapse()
         info_red('||grad(u)+q||_2 = %g'%norm(project(grad(u)+q, Q)))
         info_red('||grad(u)-grad(u_ex)||_2 = %g'%errornorm(q_ex, project(-grad(u), Q)))
+
+    exit()
 
     results = np.array(results, dtype='float')
 
