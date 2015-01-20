@@ -2,6 +2,8 @@ from dolfin import *
 import numpy as np
 from petsc4py import PETSc
 
+from itertools import chain
+
 from common import MatrixView, VectorView, assemble, la_index_mpitype
 
 __all__ = ['FluxReconstructor']
@@ -335,7 +337,6 @@ class FluxReconstructor(object):
             # Build local dofs
             local_dofs = []
             for c in cells(v):
-                # TODO: Je to dobre? Je zde j spravny index facety?
                 for j, f in enumerate(facets(c)):
                     # TODO: Don't call DofMap.cell_dofs redundantly
                     if f.incident(v): # Zero-flux on patch boundary
@@ -400,16 +401,14 @@ class FluxReconstructor(object):
                 for i in range(len(l)/2):
                     l[2*i+1] += patches_dim_offset
 
-        from itertools import chain
-        # FIXME: Natural dict order is by hashes hence pseudorandom!
-        c = chain.from_iterable(chain([v], data) for d in shared_dofs.itervalues()
-                                                 for v, data in d.iteritems())
+        c = chain.from_iterable(chain([v], data)
+                                for r in sorted(shared_dofs.iterkeys())
+                                for v, data in shared_dofs[r].iteritems())
         sendbuf = np.fromiter(c, dtype=la_index_dtype())
         num_shared_unowned = W.dofmap().local_dimension('unowned')
         num_shared_owned = len(shared_nodes) - num_shared_unowned
         assert sendbuf.size == (2*tdim+1)*num_shared_owned
-        #recvbuf = np.empty((2*tdim+1)*num_shared_unowned, dtype=la_index_dtype())
-        recvbuf = 1000000*np.ones((2*tdim+1)*num_shared_unowned, dtype=la_index_dtype())
+        recvbuf = np.empty((2*tdim+1)*num_shared_unowned, dtype=la_index_dtype())
         sendcounts = np.zeros(size, dtype='intc')
         senddispls = np.zeros(size, dtype='intc')
         recvcounts = np.zeros(size, dtype='intc')
@@ -430,7 +429,6 @@ class FluxReconstructor(object):
         # MPI_Alltoallv
         comm.tompi4py().Alltoallv((sendbuf, (sendcounts, senddispls), la_index_mpitype()),
                                   (recvbuf, (recvcounts, recvdispls), la_index_mpitype()))
-        assert not np.any(recvbuf == 1000000)
 
         # Maps from unowned local patch dof to owning rank; Rp: ip' -> r
         self._off_process_owner = off_process_owner \
@@ -483,7 +481,10 @@ class FluxReconstructor(object):
                         dof_counter += 1
 
         assert dof_counter == patches_dim - patches_dim_owned
+
         #TODO: Consider sorting (local_to_global_patches, off_process_owner)
+        #local_to_global_patches.sort()
+        #off_process_owner.sort()
 
         # TODO: validity of dof_mapping needs to be tested!
 
@@ -599,8 +600,6 @@ if __name__ == '__main__':
         Q = w.function_space().sub(0).collapse()
         info_red('||grad(u)+q||_2 = %g'%norm(project(grad(u)+q, Q)))
         info_red('||grad(u)-grad(u_ex)||_2 = %g'%errornorm(q_ex, project(-grad(u), Q)))
-
-    exit()
 
     results = np.array(results, dtype='float')
 
