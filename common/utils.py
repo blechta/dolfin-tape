@@ -1,5 +1,4 @@
-from dolfin import as_backend_type, PETScMatrix, MPI, mpi_comm_world, \
-                   tic, toc, la_index_dtype
+from dolfin import la_index_dtype
 from mpi4py import MPI as MPI4py
 import numpy as np
 
