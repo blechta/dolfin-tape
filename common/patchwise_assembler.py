@@ -182,18 +182,14 @@ class FluxReconstructor(object):
 
         # Options to deal with zeros
         # TODO: Sort these options out
-        as_backend_type(A).mat().setOption(
-            PETSc.Mat.Option.IGNORE_ZERO_ENTRIES, True)
-        #as_backend_type(A).mat().setOption(
-        #    PETSc.Mat.Option.NEW_NONZERO_LOCATIONS, False)
-        #as_backend_type(A).mat().setOption(
-        #    PETSc.Mat.Option.NEW_NONZERO_LOCATION_ERR, True)
-        #as_backend_type(A).mat().setOption(
-        #    PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
+        A.mat().setOption(PETSc.Mat.Option.IGNORE_ZERO_ENTRIES, True)
+        #A.mat().setOption(PETSc.Mat.Option.NEW_NONZERO_LOCATIONS, False)
+        #A.mat().setOption(PETSc.Mat.Option.NEW_NONZERO_LOCATION_ERR, True)
+        #A.mat().setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
 
-        # Enforce dropping of negative indices on VecSetValues
-        as_backend_type(b).vec().setOption(
-            PETSc.Vec.Option.IGNORE_NEGATIVE_INDICES, True)
+        # Enforce dropping of negative indices on Vec(Get|Set)Values
+        b.vec().setOption(PETSc.Vec.Option.IGNORE_NEGATIVE_INDICES, True)
+        x.vec().setOption(PETSc.Vec.Option.IGNORE_NEGATIVE_INDICES, True)
 
         # Initialize tensor views to partitions
         self._A_patches = [MatrixView(A, self._W.dim(), self._W.dim(),

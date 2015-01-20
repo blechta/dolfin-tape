@@ -1,6 +1,7 @@
 #ifndef __VECTOR_VIEW_H
 #define __VECTOR_VIEW_H
 
+#include <algorithm>
 #include <vector>
 #include <dolfin/log/log.h>
 #include <dolfin/common/types.h>
@@ -45,14 +46,22 @@ namespace dolfin
     /// providing compatible vector; otherwise result is undefined.
     void add_to_vector(std::shared_ptr<GenericVector> x) const
     {
+      // Get and check size of supplied vector
       std::size_t n = x->local_size();
-      Array<double> array(n);
       if (n > _inds.size())
         dolfin_error("VectorView.h",
                      "add to another vector",
                      "Dimension of supplied vector (%d) is larger than "
                      "indexing array (%d)", n, _inds.size());
+
+      // Intermediate array with zeros
+      Array<double> array(n);
+      std::fill(array.data(), array.data()+n, 0.0);
+
+      // Obtain first n values from self
       _x->get(array.data(), n, _inds.data());
+
+      // Add them to supplied vector
       x->add_local(array);
     }
 
