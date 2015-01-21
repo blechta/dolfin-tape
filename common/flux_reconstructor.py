@@ -89,8 +89,9 @@ class FluxReconstructor(object):
         self._solver = solver = PETScLUSolver('mumps')
         #self._solver = solver = PETScLUSolver('superlu_dist')
         solver.set_operator(self._A)
-        # https://bitbucket.org/petsc/petsc/issue/81
-        #solver.parameters['symmetric'] = True
+        # FIXME: Allow Cholesky only with fixed version of PETSc
+        #        https://bitbucket.org/petsc/petsc/issue/81
+        solver.parameters['symmetric'] = True
         solver.parameters['reuse_factorization'] = True
 
 
@@ -344,8 +345,8 @@ class FluxReconstructor(object):
             if not on_boundary(v) and \
               (not v.is_shared() or rank <= min(v.sharing_processes())):
                 # TODO: This assertion is very costly!! Rework!
-                assert local_dofs[-1] in W.sub(1).dofmap().dofs()-W.sub(1).dofmap().ownership_range()[0], \
-                    (local_dofs, W.sub(1).dofmap().dofs()-W.sub(1).dofmap().ownership_range()[0])
+                #assert local_dofs[-1] in W.sub(1).dofmap().dofs()-W.sub(1).dofmap().ownership_range()[0], \
+                #    (local_dofs, W.sub(1).dofmap().dofs()-W.sub(1).dofmap().ownership_range()[0])
                 # TODO: Is it correct?! Isn't it be RT cell momentum?
                 local_dofs = local_dofs[:-1]
             # Exclude unowned DOFs
