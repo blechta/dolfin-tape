@@ -49,12 +49,12 @@ class LargeCase(BaseCase):
         tic()
         B = MatrixView(A1, self.dim, self.dim, ind, ind)
         t_matview_constructor = toc()
-        self.assertLess(t_matview_constructor, 0.5)
+        self.assertLess(t_matview_constructor, 0.05)
 
         tic()
         assemble(self.a, tensor=B, add_values=True)
         t_assemble_matview = toc()
-        self.assertLess(t_assemble_matview, 2.0*t_assemble)
+        self.assertLess(t_assemble_matview, 1.5*t_assemble)
 
         print 'Timings:'
         print '  Regular assemble                 ', t_assemble
@@ -83,12 +83,12 @@ class LargeCase(BaseCase):
         tic()
         y = VectorView(x1, self.dim, ind)
         t_vecview_constructor = toc()
-        self.assertLess(t_vecview_constructor, 0.5)
+        self.assertLess(t_vecview_constructor, 0.05)
 
         tic()
         assemble(self.L, tensor=y, add_values=True)
         t_assemble_vecview = toc()
-        self.assertLess(t_assemble_vecview, 2.0*t_assemble)
+        self.assertLess(t_assemble_vecview, 1.5*t_assemble)
 
         x1 -= x
         errornorm = x1.norm('linf')
@@ -103,6 +103,7 @@ class LargeCase(BaseCase):
         tic()
         assemble(self.L, tensor=y, add_values=True)
         t_assemble_vecview_shuffled = toc()
+        self.assertLess(t_assemble_vecview_shuffled, 2.0*t_assemble)
 
         # Compare norms
         self.assertAlmostEqual(x.norm('l1'), x1.norm('l1'))
