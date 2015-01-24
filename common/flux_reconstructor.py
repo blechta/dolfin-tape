@@ -64,7 +64,7 @@ class FluxReconstructor(object):
         except AttributeError:
             w = self._w = Function(self._W)
         else:
-            w.vector.zero()
+            w.vector().zero()
 
         # Collect the result from patches to usual space
         for x_p in self._x_patches:
@@ -132,13 +132,15 @@ class FluxReconstructor(object):
 
         # Assemble matrix color by color
         # NOTE: assuming self._A is zeroed
-        for p in xrange(color_num):
+        for p in xrange(self._color_num):
             assemble(a(p), tensor=self._A_patches[p],
                      add_values=True, finalize_tensor=False)
         self._A.apply('add')
 
         # Ensure that this method is not called twice (to avoid zeroing matrix)
-        del self._assemble_matrix
+        def on_second_call():
+            raise RuntimeError("_assemble_matrix can't be called twice!")
+        self._assemble_matrix = lambda *args, **kwargs: on_second_call()
 
 
     def _compress_matrix(self):

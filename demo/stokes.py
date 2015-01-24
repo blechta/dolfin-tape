@@ -10,7 +10,7 @@ from common import FluxReconstructor
 
 results = ([], [], [], [], [])
 
-for N in [2**i for i in range(2, 7)]:
+for N in [2**i for i in xrange(2, 7)]:
     mesh = UnitSquareMesh(N, N, 'crossed')
     V = VectorFunctionSpace(mesh, 'CG', 2)
     Q = FunctionSpace(mesh, 'CG', 1)
@@ -39,11 +39,13 @@ for N in [2**i for i in range(2, 7)]:
 
     gdim = mesh.geometry().dim()
     reconstructor = FluxReconstructor(mesh, 1) # TODO: Is it correct degree?
-    w = [reconstructor.reconstruct(-u[i], -f[i] + p.dx(i)) for i in range(gdim)]
-    q = as_vector([Function(w[i], 0) for i in range(gdim)])
-    #q = [Function(w[i], 0) for i in range(gdim)]
+    q = []
+    for i in xrange(gdim):
+        w = reconstructor.reconstruct(-u[i], -f[i] + p.dx(i))
+        q.append(w.sub(0, deepcopy=True))
+    q = as_vector(q)
 
-    for i in range(gdim):
+    for i in xrange(gdim):
         plot(q[i])
 
     # TODO: We are missing everywhere pressure error!
