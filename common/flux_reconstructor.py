@@ -30,8 +30,7 @@ class FluxReconstructor(object):
         self._setup_solver()
         self._build_hat_functions(vertex_colors)
 
-        # TODO: Clear unneeded mesh connectivity
-        # TODO: Delete unneeded tensor layouts and sparsity pattern
+        self._clear()
 
 
     def reconstruct(self, u, f):
@@ -263,7 +262,8 @@ class FluxReconstructor(object):
     def _build_sparsity_pattern(self, pattern):
         mesh = self._mesh
         comm = self._mesh.mpi_comm()
-        W = self._W
+        cell_dofs_0 = self._W.sub(0).dofmap().cell_dofs
+        cell_dofs_1 = self._W.sub(1).dofmap().cell_dofs
         color_num = self._color_num
         dof_mapping = self._dof_mapping
         patches_dim_offset = self._patches_dim_offset
@@ -272,6 +272,7 @@ class FluxReconstructor(object):
         local_to_global_patches = self._local_to_global_patches
         off_process_owner = self._off_process_owner
 
+        # Build inverse of local_to_global_patches
         # TODO: Can we preallocate dict? Or do it otherwise better?
         global_to_local_patches_dict = {}
         for i, j in enumerate(local_to_global_patches):
@@ -283,6 +284,7 @@ class FluxReconstructor(object):
             else:
                 return global_to_local_patches_dict[global_patch_dof]
 
+        # Initialize sparsity pattern
         pattern.init(comm,
             np.array(2*(patches_dim_global,), dtype='uintp'),
             np.array(2*((patches_dim_offset, patches_dim_offset + patches_dim_owned), ), dtype='uintp'),
@@ -292,8 +294,8 @@ class FluxReconstructor(object):
 
         # Build sparsity pattern for mixed Laplacian
         for c in cells(mesh):
-            RT_dofs = W.sub(0).dofmap().cell_dofs(c.index())
-            DG_dofs = W.sub(1).dofmap().cell_dofs(c.index())
+            RT_dofs = cell_dofs_0(c.index())
+            DG_dofs = cell_dofs_1(c.index())
             for p in xrange(color_num):
                 RT_dofs_patch = dof_mapping[p][RT_dofs]
                 DG_dofs_patch = dof_mapping[p][DG_dofs]
@@ -555,3 +557,13 @@ class FluxReconstructor(object):
         #    patch_dofs = map(lambda dof: dof_mapping[p][dof], local_dofs)
         #    temp[2+p] = patch_dofs
         #print rank, '\n', temp.T
+
+
+    def _clear(self):
+        """Clears objects needed only for initialization of self."""
+        del self._off_process_owner, self._local_to_global_patches
+
+        # This is not really deleted now as it is referenced by tensor views
+        self._dof_mapping
+
+        # TODO: Clear unneeded mesh connectivity
