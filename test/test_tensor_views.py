@@ -4,7 +4,7 @@ from petsc4py import PETSc
 import numpy as np
 import random
 
-from common import MatrixView, VectorView, assemble
+from common.tensor_views import MatrixView, VectorView, assemble
 
 class BaseCase(unittest.TestCase):
 
