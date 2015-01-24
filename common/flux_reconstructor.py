@@ -207,14 +207,18 @@ class FluxReconstructor(object):
 
 
     def _init_tensors(self):
+        """Prepares matrix, rhs and solution vector for the system on patches
+        plus views into them living on usual function space allowing for
+        assembling into system tensors on partitions color by color and
+        querying for solution. Local to global map and ghosts are not
+        initialized for the system tensors as only indexing by global indices
+        is used from Vector/MatrixView."""
         comm = self._mesh.mpi_comm()
         color_num = self._color_num
         patches_dim_global = self._patches_dim_global
         patches_dim_offset = self._patches_dim_offset
         patches_dim_owned = self._patches_dim_owned
-        patches_dim = self._patches_dim
         dof_mapping = self._dof_mapping
-        _local_to_global_patches = self._local_to_global_patches
 
         # Prepare tensor layout and build sparsity pattern
         tl_A = TensorLayout(comm,
@@ -229,47 +233,24 @@ class FluxReconstructor(object):
                             1,
                             np.array(((patches_dim_offset, patches_dim_offset + patches_dim_owned), ), dtype='uintp'),
                             False)
-
-        # Write local_to_global to tensor layouts
-        # TODO: Is it needed?
-        local_to_global_patches = np.arange(patches_dim_offset, patches_dim_offset + patches_dim, dtype='uintp')
-        local_to_global_patches[patches_dim_owned:] = _local_to_global_patches
-        tl_A.local_to_global_map[0] = local_to_global_patches
-        tl_A.local_to_global_map[1] = local_to_global_patches
-        tl_b.local_to_global_map[0] = local_to_global_patches
-
         self._build_sparsity_pattern(tl_A.sparsity_pattern())
 
-        # Init matrix
+        # Init tensors
         self._A = A = PETScMatrix()
-        A.init(tl_A)
-
-        ## Init vectors using tensor layout (without ghosts)
-        #self._b = b = PETScVector()
-        #b.init(tl_b)
-        #self._x = x = b.copy()
-
-        # Init vectors witht ghosts
-        # TODO: Is it needed?
         self._b = b = PETScVector()
         self._x = x = PETScVector()
-        b.init(comm, (patches_dim_offset, patches_dim_offset + patches_dim_owned),
-               local_to_global_patches, _local_to_global_patches)
-        x.init(comm, (patches_dim_offset, patches_dim_offset + patches_dim_owned),
-               local_to_global_patches, _local_to_global_patches)
+        A.init(tl_A)
+        b.init(tl_b)
+        x.init(tl_b)
 
-        # Options to deal with zeros
-        # TODO: Sort these options out
+        # Drop assembled zeros as our sparsity pattern counts for non-zeros only
         A.mat().setOption(PETSc.Mat.Option.IGNORE_ZERO_ENTRIES, True)
-        #A.mat().setOption(PETSc.Mat.Option.NEW_NONZERO_LOCATIONS, False)
-        #A.mat().setOption(PETSc.Mat.Option.NEW_NONZERO_LOCATION_ERR, True)
-        #A.mat().setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
 
         # Enforce dropping of negative indices on Vec(Get|Set)Values
         b.vec().setOption(PETSc.Vec.Option.IGNORE_NEGATIVE_INDICES, True)
         x.vec().setOption(PETSc.Vec.Option.IGNORE_NEGATIVE_INDICES, True)
 
-        # Initialize tensor views to partitions
+        # Initialize tensor views to partitions with color p
         self._A_patches = [MatrixView(A, self._W.dim(), self._W.dim(),
                                       dof_mapping[p], dof_mapping[p])
                            for p in xrange(color_num)]
