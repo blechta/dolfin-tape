@@ -1,6 +1,7 @@
 from dolfin import *
 import numpy as np
 from petsc4py import PETSc
+from mpi4py import MPI as MPI4py
 
 from itertools import chain
 
@@ -34,18 +35,25 @@ class FluxReconstructor(object):
 
     @staticmethod
     def _color_patches(mesh):
+        # TODO: Does Zoltan provide better coloring?
         parameters['graph_coloring_library'] = 'Boost'
         #parameters['graph_coloring_library'] = 'Zoltan'
 
         comm = mesh.mpi_comm()
 
+        # Color vetices (equaivalent to coloring patches)
+        # TODO: 0-1-0 and 0-d-0 should give same result; which is cheaper?
+        coloring_type = np.array([0, 1, 0], dtype='uintp')
+        #coloring_type = np.array([0, mesh.topology().dim(), 0], dtype='uintp')
         vertex_colors = VertexFunction('size_t', mesh)
-        # TODO: These should give same result; which is cheaper?
-        vertex_colors.array()[:] = MeshColoring.color(mesh, np.array([0, 1, 0], dtype='uintp'))
-        #vertex_colors.array()[:] = MeshColoring.color(mesh, np.array([0, mesh.topology().dim(), 0], dtype='uintp'))
+        vertex_colors.array()[:] = MeshColoring.color(mesh, coloring_type)
+
+        # Compute color number
         color_num_local = int(vertex_colors.array().ptp()) + 1
-        #TODO: Switch to proper MPI int function, as int() may round downwards!
-        color_num = int(MPI.max(comm, color_num_local))
+        sendbuf = np.array(color_num_local)
+        recvbuf = np.array(0)
+        comm.tompi4py().Allreduce(sendbuf, recvbuf, op=MPI4py.MAX)
+        color_num = int(recvbuf)
         assert color_num >= color_num_local if MPI.size(comm) > 1 else color_num == color_num_local
 
         #max_uintp = int(np.uintp(-1))
@@ -514,6 +522,7 @@ class FluxReconstructor(object):
 
         v, q = TestFunctions(W)
         def L(p):
+            # TODO: restrict dx to patches
             return ( -hat[p]*inner(grad(u), v)
                      -hat[p]*f*q
                      +inner(grad(hat[p]), grad(u))*q )*dx
