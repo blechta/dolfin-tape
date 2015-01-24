@@ -13,12 +13,13 @@ __all__ = ['FluxReconstructor']
 class FluxReconstructor(object):
 
     def __init__(self, mesh, degree):
-
+        """Build flux reconstructor of given degree."""
         self._mesh = mesh
 
         # Color mesh vertices
-        vertex_colors, color_num = self._color_patches(mesh)
+        color_num, vertex_colors, cell_partitions = self._color_patches(mesh)
         self._color_num = color_num
+        self._cell_partitions = cell_partitions
 
         # Build dof mapping to patches problem
         self._build_dof_mapping(degree, vertex_colors)
@@ -33,15 +34,60 @@ class FluxReconstructor(object):
         # TODO: Delete unneeded tensor layouts and sparsity pattern
 
 
+    def reconstruct(self, u, f):
+        """Takes u, f and reconstructs H(div) gradient flux. Returns mixed
+        function (q, r) where q approximates -grad(u) on RT space."""
+        v, q = TestFunctions(self._W)
+        hat = self._hat
+
+        # Linear form on patches of color p
+        def L(p):
+            dxp = dx(subdomain_id=1, subdomain_data=self._cell_partitions[p])
+            return ( -hat[p]*inner(grad(u), v)
+                     -hat[p]*f*q
+                     +inner(grad(hat[p]), grad(u))*q )*dxp
+
+        # Assemble rhs color by color
+        self._b.zero()
+        for p in xrange(self._color_num):
+            assemble(L(p), tensor=self._b_patches[p],
+                     add_values=True, finalize_tensor=False)
+        self._b.apply('add')
+
+        # Solve the system
+        assert self._solver, "Solver has not been initialized yet."
+        self._solver.solve(self._x, self._b)
+
+        # Reuse function for holding result
+        try:
+            w = self._w
+        except AttributeError:
+            w = self._w = Function(self._W)
+        else:
+            w.vector.zero()
+
+        # Collect the result from patches to usual space
+        for x_p in self._x_patches:
+            x_p.add_to_vector(w.vector())
+        w.vector().apply('add')
+
+        return w
+
+
     @staticmethod
     def _color_patches(mesh):
+        """Returns number of colors, vertex function with colors and sequence
+        of cell functions cp s.t.:
+            cp[p][c] = 1 ... if c belongs to patch of color p
+            cp[p][c] = 0 ... otherwise
+        """
+        comm = mesh.mpi_comm()
+
         # TODO: Does Zoltan provide better coloring?
         parameters['graph_coloring_library'] = 'Boost'
         #parameters['graph_coloring_library'] = 'Zoltan'
 
-        comm = mesh.mpi_comm()
-
-        # Color vetices (equaivalent to coloring patches)
+        # Color vertices (equaivalent to coloring patches)
         # TODO: 0-1-0 and 0-d-0 should give same result; which is cheaper?
         coloring_type = np.array([0, 1, 0], dtype='uintp')
         #coloring_type = np.array([0, mesh.topology().dim(), 0], dtype='uintp')
@@ -54,31 +100,49 @@ class FluxReconstructor(object):
         recvbuf = np.array(0)
         comm.tompi4py().Allreduce(sendbuf, recvbuf, op=MPI4py.MAX)
         color_num = int(recvbuf)
-        assert color_num >= color_num_local if MPI.size(comm) > 1 else color_num == color_num_local
+        assert color_num >= color_num_local if MPI.size(comm) > 1 \
+                else color_num == color_num_local
 
-        #max_uintp = int(np.uintp(-1))
-        #cell_partitions = [CellFunction('size_t', mesh, max_uintp) for _ in xrange(color_num)]
-        #for v in vertices(mesh):
-        #    p = vertex_colors[v]
-        #    for c in cells(v):
-        #        cell_partitions[p][c] = p
+        # Build cell partitions
+        # TODO: Cell partitions are used merely for restricting integration to
+        #       patches. It is not obvious whether this overhead is worth.
+        cell_partitions = [CellFunction('size_t', mesh)
+                           for _ in xrange(color_num)]
+        for v in vertices(mesh):
+            p = vertex_colors[v]
+            for c in cells(v):
+                cell_partitions[p][c] = 1
 
-        return vertex_colors, color_num
+        return color_num, vertex_colors, cell_partitions
 
 
     def _assemble_matrix(self):
+        """Assembles flux reconstruction matrix on all the patches. Mixed
+        Poisson like saddle-point form is used.
+
+        The matrix is stored as self._A but accessed by assembler through
+        matrix views self._A_patches[:]."""
         u, r = TrialFunctions(self._W)
         v, q = TestFunctions(self._W)
 
-        # TODO: restrict dx to patches
-        a = ( inner(u, v) - inner(r, div(v)) - inner(q, div(u)) )*dx
+        # Bilinear form on patches of color p
+        def a(p):
+            dxp = dx(subdomain_id=1, subdomain_data=self._cell_partitions[p])
+            return ( inner(u, v) - inner(r, div(v)) - inner(q, div(u)) )*dxp
 
-        [assemble(a, tensor=self._A_patches[p], add_values=True,
-                  finalize_tensor=False) for p in range(self._color_num)]
+        # Assemble matrix color by color
+        # NOTE: assuming self._A is zeroed
+        for p in xrange(color_num):
+            assemble(a(p), tensor=self._A_patches[p],
+                     add_values=True, finalize_tensor=False)
         self._A.apply('add')
+
+        # Ensure that this method is not called twice (to avoid zeroing matrix)
+        del self._assemble_matrix
 
 
     def _compress_matrix(self):
+        """Removes (nearly) zero entries from self._A sparsity pattern."""
         # TODO: Rather do better preallocation than compression
         info_blue('Num nonzeros before compression: %d'%self._A.nnz())
         tic()
@@ -90,6 +154,7 @@ class FluxReconstructor(object):
 
 
     def _setup_solver(self):
+        """Initilize Cholesky solver for solving flux reconstruction."""
         # Diagnostic output
         #PETScOptions.set('mat_mumps_icntl_4', 3)
         #PETScOptions.set('mat_mumps_icntl_2', 6)
@@ -99,6 +164,7 @@ class FluxReconstructor(object):
         solver.set_operator(self._A)
         # FIXME: Allow Cholesky only with fixed version of PETSc
         #        https://bitbucket.org/petsc/petsc/issue/81
+        #        Wait for next PETSc release and check PETSc version.
         solver.parameters['symmetric'] = True
         solver.parameters['reuse_factorization'] = True
 
@@ -204,11 +270,11 @@ class FluxReconstructor(object):
         # Initialize tensor views to partitions
         self._A_patches = [MatrixView(A, self._W.dim(), self._W.dim(),
                                       dof_mapping[p], dof_mapping[p])
-                           for p in range(color_num)]
+                           for p in xrange(color_num)]
         self._b_patches = [VectorView(b, self._W.dim(), dof_mapping[p])
-                           for p in range(color_num)]
+                           for p in xrange(color_num)]
         self._x_patches = [VectorView(x, self._W.dim(), dof_mapping[p])
-                           for p in range(color_num)]
+                           for p in xrange(color_num)]
 
 
     def _build_sparsity_pattern(self, pattern):
@@ -245,7 +311,7 @@ class FluxReconstructor(object):
         for c in cells(mesh):
             RT_dofs = W.sub(0).dofmap().cell_dofs(c.index())
             DG_dofs = W.sub(1).dofmap().cell_dofs(c.index())
-            for p in range(color_num):
+            for p in xrange(color_num):
                 RT_dofs_patch = dof_mapping[p][RT_dofs]
                 DG_dofs_patch = dof_mapping[p][DG_dofs]
                 RT_dofs_patch = RT_dofs_patch[RT_dofs_patch != -1]
@@ -320,15 +386,15 @@ class FluxReconstructor(object):
                (not v.is_shared() or rank <= min(v.sharing_processes())))
         self._patches_dim = patches_dim
         ##partitions_dim = [sum(patch_dim(v) for v in vertices(mesh) if vertex_colors[v] == p)
-        ##                  for p in range(color_num)]
+        ##                  for p in xrange(color_num)]
 
         ##assert sum(patch_dim(v) for v in vertices(mesh)) == patches_dim
         ##assert sum(partitions_dim) == patches_dim
 
         # Construct mapping of (rank-local) W dofs to (rank-global) patch-wise problems
         self._dof_mapping = dof_mapping = [np.empty(num_dofs_with_ghosts, dtype=la_index_dtype())
-                       for p in range(color_num)]
-        [dof_mapping[p].fill(-1) for p in range(color_num)]
+                       for p in xrange(color_num)]
+        [dof_mapping[p].fill(-1) for p in xrange(color_num)]
         dof_counter = 0
         facet_dofs = [W.dofmap().tabulate_entity_dofs(tdim - 1, f)
                       for f in range(tdim + 1)]
@@ -399,7 +465,7 @@ class FluxReconstructor(object):
         self._patches_dim_owned = patches_dim_owned = dof_counter
         self._patches_dim_offset = patches_dim_offset \
                 = MPI.global_offset(comm, patches_dim_owned, True)
-        for p in range(color_num):
+        for p in xrange(color_num):
             dof_mapping[p][dof_mapping[p]>=0] += patches_dim_offset # TODO: can we do it more clever?
         for d1 in shared_dofs.itervalues():
             for l in d1.itervalues():
@@ -502,40 +568,7 @@ class FluxReconstructor(object):
         #global_dofs = map(local_to_global, local_dofs)
         #temp[0] = local_dofs
         #temp[1] = global_dofs
-        #for p in range(color_num):
+        #for p in xrange(color_num):
         #    patch_dofs = map(lambda dof: dof_mapping[p][dof], local_dofs)
         #    temp[2+p] = patch_dofs
         #print rank, '\n', temp.T
-
-
-    def reconstruct(self, u, f):
-        """Takes u, f and reconstructs H(div) gradient flux. Returns mixed
-        function (q, r) where q approximates -grad(u) on RT space."""
-        W = self._W
-        b = self._b
-        x = self._x
-        b_patches = self._b_patches
-        x_patches = self._x_patches
-        color_num = self._color_num
-        hat = self._hat
-        solver = self._solver
-
-        v, q = TestFunctions(W)
-        def L(p):
-            # TODO: restrict dx to patches
-            return ( -hat[p]*inner(grad(u), v)
-                     -hat[p]*f*q
-                     +inner(grad(hat[p]), grad(u))*q )*dx
-
-        b.zero()
-        [assemble(L(p), tensor=b_patches[p], add_values=True, finalize_tensor=False)
-         for p in range(color_num)]
-        b.apply('add')
-
-        solver.solve(x, b)
-
-        w = Function(W)
-        [xp.add_to_vector(w.vector()) for xp in x_patches]
-        w.vector().apply('add')
-
-        return w
