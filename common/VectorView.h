@@ -1,11 +1,11 @@
 #ifndef __VECTOR_VIEW_H
 #define __VECTOR_VIEW_H
 
-#include <algorithm>
 #include <vector>
 #include <dolfin/log/log.h>
 #include <dolfin/common/types.h>
 #include <dolfin/common/Array.h>
+#include <dolfin/common/utils.h>
 #include <dolfin/la/TensorLayout.h>
 #include <dolfin/la/GenericVector.h>
 
@@ -56,7 +56,7 @@ namespace dolfin
 
       // Intermediate array with zeros
       Array<double> array(n);
-      std::fill(array.data(), array.data()+n, 0.0);
+      zerofill(array.data(), n);
 
       // Obtain first n values from self
       _x->get(array.data(), n, _inds.data());
