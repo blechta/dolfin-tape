@@ -7,6 +7,7 @@ from itertools import chain
 
 from tensor_views import MatrixView, VectorView, assemble
 from utils import la_index_mpitype
+from hat_function import hat_function
 
 __all__ = ['FluxReconstructor']
 
@@ -24,11 +25,14 @@ class FluxReconstructor(object):
         # Build dof mapping to patches problem
         self._build_dof_mapping(degree, vertex_colors)
 
+        # Prepare system tensors, tensor views and solver
         self._init_tensors()
         self._assemble_matrix()
         self._compress_matrix()
         self._setup_solver()
-        self._build_hat_functions(vertex_colors)
+
+        # Prepare hat functions
+        self._hat = [hat_function(vertex_colors, p) for p in xrange(color_num)]
 
         self._clear()
 
@@ -120,7 +124,7 @@ class FluxReconstructor(object):
         Poisson like saddle-point form is used.
 
         The matrix is stored as self._A but accessed by assembler through
-        matrix views self._A_patches[:]."""
+        matrix views self._A_patches[p] on patches of color p."""
         u, r = TrialFunctions(self._W)
         v, q = TestFunctions(self._W)
 
@@ -168,41 +172,6 @@ class FluxReconstructor(object):
         #        Wait for next PETSc release and check PETSc version.
         solver.parameters['symmetric'] = True
         solver.parameters['reuse_factorization'] = True
-
-
-    def _build_hat_functions(self, vertex_colors):
-        """Builds a list of hat functions for every partition."""
-        #FIXME: We create one P1 function for every partition and rank as
-        #       vertex coloring is not compatible across partition boundaries
-        #       hence hat functions need to be discontinuous. This is handled
-        #       by creating hat functions s.t. every single one takes hat
-        #       values on just one parition/rank combination. This is hack
-        #       (it may not be guaranteed that passing different cofficient
-        #       to form is correct) but moreover it is not scalable solution!
-
-        rank = MPI.rank(self._mesh.mpi_comm())
-        size = MPI.size(self._mesh.mpi_comm())
-
-        # Define space, function and vector
-        P1 = FunctionSpace(self._mesh, 'CG', 1)
-        hat = [Function(P1) for _ in range(size*self._color_num)]
-        hat_vec = [u.vector() for u in hat]
-
-        # Build hat DOFs
-        hat_dofs = [[] for x in hat_vec]
-        vertex_to_dof = vertex_to_dof_map(P1)
-        for vertex, dof in enumerate(vertex_to_dof):
-            hat_dofs[vertex_colors[int(vertex)]*size+rank].append(dof)
-        hat_dofs = [np.array(hd, dtype=la_index_dtype()) for hd in hat_dofs]
-
-        # Assign
-        for i, x in enumerate(hat_vec):
-            if i % size == rank:
-                x.set_local(np.ones(hat_dofs[i].shape, dtype='float_'), hat_dofs[i])
-            x.apply('insert')
-
-        hat = [hat[p*size+rank] for p in range(self._color_num)]
-        self._hat = hat
 
 
     def _init_tensors(self):
