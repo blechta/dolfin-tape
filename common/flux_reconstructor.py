@@ -297,98 +297,78 @@ class FluxReconstructor(object):
         rank = MPI.rank(comm)
         size = MPI.size(comm)
 
+        # Construct cell space for flux reconstruction mixed problem
         RT = FiniteElement('Raviart-Thomas', mesh, degree + 1)
         DG = FiniteElement('Discontinuous Lagrange', mesh, degree)
         W = FunctionSpaceBase(mesh, RT*DG)
         self._W = W
-
-        gdim = mesh.geometry().dim()
+        dofmap = W.dofmap()
+        dofmap_dg = W.sub(1).dofmap()
         tdim = mesh.topology().dim()
-        num_cells = mesh.num_cells()
-        num_facets = mesh.num_facets()
-        num_vertices = mesh.num_vertices()
-        dofs_per_vertex = W.dofmap().num_entity_dofs(0)
-        dofs_per_facet = W.dofmap().num_entity_dofs(tdim-1)
-        dofs_per_cell = W.dofmap().num_entity_dofs(tdim)
 
-        assert dofs_per_vertex == 0
-
-        mesh.init(0, tdim-1)
-        mesh.init(0, tdim)
-        ##def patch_dim(vertex):
-        ##    num_interior_facets = vertex.num_entities(tdim-1)
-        ##    num_patch_cells = vertex.num_entities(tdim)
-        ##    patch_dim = num_interior_facets*dofs_per_facet + num_patch_cells*dofs_per_cell
-        ##    # Remove one DG DOF per interior patch
-        ##    # TODO: this lowest rank distribution is not even!
-        ##    if not on_boundary(vertex) and \
-        ##      (not vertex.is_shared() or rank <= min(vertex.sharing_processes())):
-        ##        patch_dim -= 1
-        ##    return patch_dim
-
+        # Function for checking if a vertex is on domain boundary
         mesh.init(tdim-1, tdim)
         def on_boundary(vertex):
             return any(f.exterior() for f in facets(vertex))
 
-        num_dofs_with_ghosts = W.dofmap().local_dimension('all')
+        # Function for checking whether one DG dof should be removed at patch
+        def remove_dg_dof(vertex):
+            # True if vertex is interior but only on one rank if patch is shared
+            # TODO: Is there some other scheme than "shared on lowest rank"?
+            return not on_boundary(vertex) and \
+                   ( not vertex.is_shared()
+                     or rank <= min(vertex.sharing_processes()) )
+
+        # Pick some dimensions
+        num_cells = mesh.num_cells()
+        num_facets = mesh.num_facets()
+        dofs_per_vertex = dofmap.num_entity_dofs(0)
+        dofs_per_facet = dofmap.num_entity_dofs(tdim-1)
+        dofs_per_cell = dofmap.num_entity_dofs(tdim)
+        assert dofs_per_vertex == 0
+        num_dofs_with_ghosts = dofmap.local_dimension('all')
+
+        # Local dimension of patch space
         patches_dim = tdim*dofs_per_facet*num_facets + (tdim + 1)*dofs_per_cell*num_cells
         # Remove one DG DOF per interior patch
-        # TODO: this lowest rank distribution is not even!
-        patches_dim -= sum(1 for v in vertices(mesh) if
-                not on_boundary(v) and \
-               (not v.is_shared() or rank <= min(v.sharing_processes())))
+        patches_dim -= sum(1 for v in vertices(mesh) if remove_dg_dof(v))
         self._patches_dim = patches_dim
-        ##partitions_dim = [sum(patch_dim(v) for v in vertices(mesh) if vertex_colors[v] == p)
-        ##                  for p in xrange(color_num)]
-
-        ##assert sum(patch_dim(v) for v in vertices(mesh)) == patches_dim
-        ##assert sum(partitions_dim) == patches_dim
 
         # Construct mapping of (rank-local) W dofs to (rank-global) patch-wise problems
         self._dof_mapping = dof_mapping = [np.empty(num_dofs_with_ghosts, dtype=la_index_dtype())
                        for p in xrange(color_num)]
         [dof_mapping[p].fill(-1) for p in xrange(color_num)]
         dof_counter = 0
-        facet_dofs = [W.dofmap().tabulate_entity_dofs(tdim - 1, f)
+        facet_dofs = [dofmap.tabulate_entity_dofs(tdim - 1, f)
                       for f in range(tdim + 1)]
-        cell_dofs = W.dofmap().tabulate_entity_dofs(tdim, 0)
-        local_ownership_size = W.dofmap().local_dimension('owned')
-        local_to_global = W.dofmap().local_to_global_index
-        shared_nodes = W.dofmap().shared_nodes()
-        shared_dofs = {r: {} for r in sorted(W.dofmap().neighbours())}
+        cell_dofs = dofmap.tabulate_entity_dofs(tdim, 0)
+        local_ownership_size = dofmap.local_dimension('owned')
+        local_to_global = dofmap.local_to_global_index
+        shared_nodes = dofmap.shared_nodes()
+        shared_dofs = {r: {} for r in sorted(dofmap.neighbours())}
         for v in vertices(mesh):
             p = vertex_colors[v]
 
             # Build local dofs
             local_dofs = []
             for c in cells(v):
+                c_dofs = dofmap.cell_dofs(c.index())
                 for j, f in enumerate(facets(c)):
-                    # TODO: Don't call DofMap.cell_dofs redundantly
                     if f.incident(v): # Zero-flux on patch boundary
-                        local_dofs += W.dofmap().cell_dofs(c.index())[facet_dofs[j]].tolist()
-                local_dofs += W.dofmap().cell_dofs(c.index())[cell_dofs].tolist()
+                        local_dofs += c_dofs[facet_dofs[j]].tolist()
+                local_dofs += c_dofs[cell_dofs].tolist()
+
             # Remove one DG DOF per interior patch
-            # TODO: this lowest rank distribution is not even!
-            if not on_boundary(v) and \
-              (not v.is_shared() or rank <= min(v.sharing_processes())):
-                # TODO: This assertion is very costly!! Rework!
-                #assert local_dofs[-1] in W.sub(1).dofmap().dofs()-W.sub(1).dofmap().ownership_range()[0], \
-                #    (local_dofs, W.sub(1).dofmap().dofs()-W.sub(1).dofmap().ownership_range()[0])
-                # TODO: Is it correct?! Isn't it be RT cell momentum?
-                local_dofs = local_dofs[:-1]
+            if remove_dg_dof(v):
+                removed_dof = local_dofs.pop()
+                assert removed_dof in dofmap_dg.cell_dofs(c.index())
+
             # Exclude unowned DOFs
             local_dofs = np.unique(dof for dof in local_dofs if dof < local_ownership_size)
-            if local_dofs.size == 0:
-                # TODO: Should this happen?!
-                continue
             assert local_dofs.min() >= 0 and local_dofs.max() < local_ownership_size
 
-            ## Build global dofs
-            #num_dofs = patch_dim(v)
-            #assert num_dofs == len(local_dofs)
-            # Store to array; now with local indices
-            num_dofs = len(local_dofs)
-            ##assert num_dofs==patch_dim(v) if size==1 else num_dofs<=patch_dim(v)
+            # Build global dofs
+            num_dofs = local_dofs.size
             global_dofs = np.arange(dof_counter, dof_counter + num_dofs, dtype=la_index_dtype())
 
             # Store mapping and increase counter
@@ -398,7 +378,6 @@ class FluxReconstructor(object):
             # Prepare shared dofs
             global_vertex_index = None
             for dof in local_dofs:
-                # TODO: Check that dof is facet dof
                 sharing_processes = shared_nodes.get(dof)
                 if sharing_processes is None:
                     continue
@@ -412,25 +391,28 @@ class FluxReconstructor(object):
                     l = shared_dofs[r][global_dof] = []
                 l += [global_vertex_index, dof_mapping[p][dof]]
 
-        #assert dof_counter == patches_dim + patches_dim_offset
         assert dof_counter==patches_dim if size==1 else dof_counter<=patches_dim
 
+        # Compute patches ownership
         self._patches_dim_owned = patches_dim_owned = dof_counter
         self._patches_dim_offset = patches_dim_offset \
                 = MPI.global_offset(comm, patches_dim_owned, True)
+
+        # Switch to global indexing
         for p in xrange(color_num):
-            dof_mapping[p][dof_mapping[p]>=0] += patches_dim_offset # TODO: can we do it more clever?
+            dof_mapping[p][dof_mapping[p]>=0] += patches_dim_offset
         for d1 in shared_dofs.itervalues():
             for l in d1.itervalues():
                 assert len(l) == 2*tdim
                 for i in range(len(l)/2):
                     l[2*i+1] += patches_dim_offset
 
+        # Prepare data for MPI communication
         c = chain.from_iterable(chain([v], data)
                                 for r in sorted(shared_dofs.iterkeys())
                                 for v, data in shared_dofs[r].iteritems())
         sendbuf = np.fromiter(c, dtype=la_index_dtype())
-        num_shared_unowned = W.dofmap().local_dimension('unowned')
+        num_shared_unowned = dofmap.local_dimension('unowned')
         num_shared_owned = len(shared_nodes) - num_shared_unowned
         assert sendbuf.size == (2*tdim+1)*num_shared_owned
         recvbuf = np.empty((2*tdim+1)*num_shared_unowned, dtype=la_index_dtype())
@@ -466,65 +448,68 @@ class FluxReconstructor(object):
         dof_counter = 0
         mesh.init(tdim-1, tdim)
         for c in cells(mesh):
-            c_dofs =  W.dofmap().cell_dofs(c.index())
-            # TODO: Is this indexing correct?
+
+            # Loop over facets on rank interface
             for i, f in enumerate(facets(c)):
                 if f.num_entities(tdim) == 2 or f.exterior():
                     continue
+
+                # Get unonwed facet dofs
+                c_dofs =  dofmap.cell_dofs(c.index())
                 f_dofs = [dof for dof in c_dofs[facet_dofs[i]]
                               if dof>=local_ownership_size]
                 if len(f_dofs) == 0:
                     continue
+
                 for dof in f_dofs:
-                    global_index = local_to_global(dof)
-                    # TODO: restrict search to relevant process
-                    # TODO: optimize this!
-                    indices = recvbuf[::2*tdim+1]
-                    assert indices.size*tdim == patches_dim-patches_dim_owned
-                    # TODO: THIS MAY YIELD QUADRATIC SCALING !!!!!!!
-                    j = np.where(indices==global_index)
-                    assert len(j)==1 and j[0].size==1
-                    j = (2*tdim + 1) * j[0][0]
-                    assert recvbuf[j]==global_index
-                    vertex_indices = recvbuf[j+1:j+1+2*tdim:2]
-                    patch_dofs     = recvbuf[j+2:j+2+2*tdim:2]
-                    # TODO: Maybe use DofMap::off_process_owner function
+                    # Get global dof index
+                    global_dof = local_to_global(dof)
+
+                    # Get owner
                     ranks = shared_nodes[dof]
                     assert ranks.size == 1
-                    r = ranks[0]
+                    owner = ranks[0]
 
+                    # Search for received data with matching global index
+                    # TODO: Avoid copying large portion of recvbuf on and on
+                    owner_recvbuf_range = slice(
+                            recvdispls[owner],
+                            recvdispls[owner] + recvcounts[owner],
+                            2*tdim+1 )
+                    global_dofs = recvbuf[owner_recvbuf_range]
+                    j = np.where(global_dofs == global_dof) # TODO: THIS MAY YIELD QUADRATIC SCALING !
+                    assert len(j)==1 and j[0].size==1
+                    j = owner_recvbuf_range.step * j[0][0] + owner_recvbuf_range.start
+                    assert recvbuf[j] == global_dof
+
+                    # Get vertex (patch) indices and patch dofs
+                    vertex_indices = recvbuf[j+1:j+1+2*tdim:2]
+                    patch_dofs     = recvbuf[j+2:j+2+2*tdim:2]
+
+                    # Loop over vertices and store the data
                     for v in vertices(f):
                         p = vertex_colors[v]
                         k = np.where(vertex_indices==v.global_index())
                         assert len(k)==1 and k[0].size==1
                         k = k[0][0]
                         assert 0 <= k < tdim
+
+                        # Store received dato to patch dof mapping
                         dof_mapping[p][dof] = patch_dofs[k]
 
-                        off_process_owner[dof_counter] = r
+                        # Also construct (arbitrarily - as we have not defined
+                        # local patch indices so far) owner and local to global
+                        off_process_owner[dof_counter] = owner
                         local_to_global_patches[dof_counter] = patch_dofs[k]
+
                         dof_counter += 1
 
         assert dof_counter == patches_dim - patches_dim_owned
 
-        #TODO: Consider sorting (local_to_global_patches, off_process_owner)
-        #local_to_global_patches.sort()
-        #off_process_owner.sort()
-
+        # TODO: Consider sorting (local_to_global_patches, off_process_owner)
         # TODO: validity of dof_mapping needs to be tested!
 
         self._patches_dim_global = MPI.sum(comm, patches_dim_owned)
-
-        # Debugging
-        #temp = np.ndarray((2+color_num, num_dofs_with_ghosts))
-        #local_dofs = np.arange(num_dofs_with_ghosts)
-        #global_dofs = map(local_to_global, local_dofs)
-        #temp[0] = local_dofs
-        #temp[1] = global_dofs
-        #for p in xrange(color_num):
-        #    patch_dofs = map(lambda dof: dof_mapping[p][dof], local_dofs)
-        #    temp[2+p] = patch_dofs
-        #print rank, '\n', temp.T
 
 
     def _clear(self):
