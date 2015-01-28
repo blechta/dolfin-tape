@@ -5,6 +5,7 @@ import numpy as np
 __all__ = ['la_index_mpitype']
 
 def la_index_mpitype():
+    """mpi4py type corresponding to dolfin::la_index."""
     try:
         mpi_typedict = MPI4py._typedict
     except AttributeError:

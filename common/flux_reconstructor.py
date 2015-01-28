@@ -27,6 +27,7 @@ class FluxReconstructor(object):
 
         # Prepare system tensors, tensor views and solver
         self._init_tensors()
+        self._clear()
         self._assemble_matrix()
         self._compress_matrix()
         self._setup_solver()
@@ -34,7 +35,6 @@ class FluxReconstructor(object):
         # Prepare hat functions
         self._hat = [hat_function(vertex_colors, p) for p in xrange(color_num)]
 
-        self._clear()
 
 
     def reconstruct(self, u, f):
@@ -514,6 +514,7 @@ class FluxReconstructor(object):
 
     def _clear(self):
         """Clears objects needed only for initialization of self."""
+        # TODO: Remove this and hadle variables lifetime by proper scoping
         del self._off_process_owner, self._local_to_global_patches
 
         # This is not really deleted now as it is referenced by tensor views
