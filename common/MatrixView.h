@@ -78,7 +78,6 @@ namespace dolfin
     virtual std::pair<std::size_t, std::size_t>
       local_range(std::size_t dim) const
     {
-      //TODO: implement!
       dolfin_not_implemented();
       return _A->local_range(dim);
     }
@@ -86,7 +85,6 @@ namespace dolfin
     /// Return number of non-zero entries in matrix (collective)
     virtual std::size_t nnz() const
     {
-      //TODO: implement!
       dolfin_not_implemented();
       return 0;
     }
@@ -95,7 +93,6 @@ namespace dolfin
     /// Set all entries to zero and keep any sparse structure
     virtual void zero()
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
@@ -107,7 +104,6 @@ namespace dolfin
     /// Return informal string representation (pretty-print)
     virtual std::string str(bool verbose) const
     {
-      //TODO: implement!
       dolfin_not_implemented();
       return "Not implemented!";
     }
@@ -129,7 +125,6 @@ namespace dolfin
     ///         The dimension (axis): dim = 0 --> z = y, dim = 1 --> z = x
     virtual void init_vector(GenericVector& z, std::size_t dim) const
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
@@ -138,7 +133,6 @@ namespace dolfin
                      std::size_t m, const dolfin::la_index* rows,
                      std::size_t n, const dolfin::la_index* cols) const
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
@@ -147,7 +141,6 @@ namespace dolfin
                      std::size_t m, const dolfin::la_index* rows,
                      std::size_t n, const dolfin::la_index* cols)
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
@@ -156,7 +149,6 @@ namespace dolfin
                            std::size_t m, const dolfin::la_index* rows,
                            std::size_t n, const dolfin::la_index* cols)
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
@@ -165,7 +157,6 @@ namespace dolfin
                      std::size_t m, const dolfin::la_index* rows,
                      std::size_t n, const dolfin::la_index* cols)
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
@@ -191,14 +182,12 @@ namespace dolfin
     virtual void axpy(double a, const GenericMatrix& A,
                       bool same_nonzero_pattern)
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Return norm of matrix
     virtual double norm(std::string norm_type) const
     {
-      //TODO: implement!
       dolfin_not_implemented();
       return 0.0;
     }
@@ -207,7 +196,6 @@ namespace dolfin
     virtual void getrow(std::size_t row, std::vector<std::size_t>& columns,
                         std::vector<double>& values) const
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
@@ -216,35 +204,30 @@ namespace dolfin
                         const std::vector<std::size_t>& columns,
                         const std::vector<double>& values)
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Set given rows (global row indices) to zero
     virtual void zero(std::size_t m, const dolfin::la_index* rows)
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Set given rows (local row indices) to zero
     virtual void zero_local(std::size_t m, const dolfin::la_index* rows)
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Set given rows (global row indices) to identity matrix
     virtual void ident(std::size_t m, const dolfin::la_index* rows)
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Set given rows (local row indices) to identity matrix
     virtual void ident_local(std::size_t m, const dolfin::la_index* rows)
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
@@ -252,21 +235,18 @@ namespace dolfin
     /// zero-sized or have correct size and parallel layout.
     virtual void transpmult(const GenericVector& x, GenericVector& y) const
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Set diagonal of a matrix
     virtual void set_diagonal(const GenericVector& x)
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
     /// Multiply matrix by given number
     virtual const MatrixView& operator*= (double a)
     {
-      //TODO: implement!
       dolfin_not_implemented();
       return *this;
     }
@@ -274,7 +254,6 @@ namespace dolfin
     /// Divide matrix by given number
     virtual const MatrixView& operator/= (double a)
     {
-      //TODO: implement!
       dolfin_not_implemented();
       return *this;
     }
@@ -299,7 +278,6 @@ namespace dolfin
     /// Initialize zero tensor using tensor layout
     virtual void init(const TensorLayout& tensor_layout)
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
@@ -325,7 +303,6 @@ namespace dolfin
     /// Compute matrix-vector product y = Ax
     virtual void mult(const GenericVector& x, GenericVector& y) const
     {
-      //TODO: implement!
       dolfin_not_implemented();
     }
 
