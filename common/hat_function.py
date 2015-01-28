@@ -13,13 +13,12 @@ def hat_function(vertex_colors, color, element=None):
     NOTE: This expression provides a little hack as it lacks contiuity across
     MPI partitions boundaries unless vertex_colors is compatible there. In fact,
     this is what we need in FluxReconstructor."""
-    try:
-        assert isinstance(vertex_colors, cpp.VertexFunctionSizet)
-    except:
-        import pdb; pdb.set_trace()
+    assert isinstance(vertex_colors, cpp.VertexFunctionSizet)
     mesh = vertex_colors.mesh()
     if not element:
         element = FiniteElement('Lagrange', mesh, 1)
+    assert element.family() in ['Lagrange', 'Discontinuous Lagrange']
+    assert element.degree() == 1
     ufc_element, ufc_dofmap = jit(element, mpi_comm=mesh.mpi_comm())
     dolfin_element = cpp.FiniteElement(ufc_element)
 
