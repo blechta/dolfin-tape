@@ -10,9 +10,9 @@ def hat_function(vertex_colors, color, element=None):
     This is well defined just on Lagrange 1 element (default) and Dicontinuous
     Lagrange 1 element.
 
-    NOTE: This expression provides a little hack as it lacks contiuity across
+    NOTE: This expression provides a little hack as it lacks continuity across
     MPI partitions boundaries unless vertex_colors is compatible there. In fact,
-    this is what we need in FluxReconstructor."""
+    this behaviour is needed in FluxReconstructor."""
     assert isinstance(vertex_colors, cpp.VertexFunctionSizet)
     mesh = vertex_colors.mesh()
     if not element:
