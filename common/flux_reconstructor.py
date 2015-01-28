@@ -297,10 +297,9 @@ class FluxReconstructor(object):
         rank = MPI.rank(comm)
         size = MPI.size(comm)
 
-        RT = FunctionSpace(mesh, 'Raviart-Thomas', degree+1)
-        DG = FunctionSpace(mesh, 'Discontinuous Lagrange', degree)
-        W = RT*DG
-        del RT, DG
+        RT = FiniteElement('Raviart-Thomas', mesh, degree + 1)
+        DG = FiniteElement('Discontinuous Lagrange', mesh, degree)
+        W = FunctionSpaceBase(mesh, RT*DG)
         self._W = W
 
         gdim = mesh.geometry().dim()
