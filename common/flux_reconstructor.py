@@ -36,24 +36,37 @@ class FluxReconstructor(object):
         self._hat = [hat_function(vertex_colors, p) for p in xrange(color_num)]
 
 
+    def dp(self, p):
+        """Return volume measure on patches of color p."""
+        return Measure("dx", subdomain_id=1, subdomain_data=self._cell_partitions[p])
+
+
+    def L(self, p, u, f):
+        """Returns rhs linear form for flux reconstruction on patches p s.t.
+        resulting flux q
+          * reconstructs q ~ -grad(u)
+          * equilibrates div(q) ~ f."""
+        v, q = TestFunctions(self._W)
+        hat = self._hat
+        return ( -hat[p]*inner(grad(u), v)
+                 -hat[p]*f*q
+                 +inner(grad(hat[p]), grad(u))*q )*self.dp(p)
+
+    def a(self, p):
+        """Returns bilinear form for flux reconstruction on patches of color p.
+        Mixed Poisson-like saddle-point form is used."""
+        u, r = TrialFunctions(self._W)
+        v, q = TestFunctions(self._W)
+        return ( inner(u, v) - inner(r, div(v)) - inner(q, div(u)) )*self.dp(p)
+
 
     def reconstruct(self, u, f):
         """Takes u, f and reconstructs H(div) gradient flux. Returns mixed
         function (q, r) where q approximates -grad(u) on RT space."""
-        v, q = TestFunctions(self._W)
-        hat = self._hat
-
-        # Linear form on patches of color p
-        def L(p):
-            dxp = dx(subdomain_id=1, subdomain_data=self._cell_partitions[p])
-            return ( -hat[p]*inner(grad(u), v)
-                     -hat[p]*f*q
-                     +inner(grad(hat[p]), grad(u))*q )*dxp
-
         # Assemble rhs color by color
         self._b.zero()
         for p in xrange(self._color_num):
-            assemble(L(p), tensor=self._b_patches[p],
+            assemble(self.L(p, u, f), tensor=self._b_patches[p],
                      add_values=True, finalize_tensor=False)
         self._b.apply('add')
 
@@ -120,23 +133,13 @@ class FluxReconstructor(object):
 
 
     def _assemble_matrix(self):
-        """Assembles flux reconstruction matrix on all the patches. Mixed
-        Poisson like saddle-point form is used.
-
+        """Assembles flux reconstruction matrix on all the patches.
         The matrix is stored as self._A but accessed by assembler through
         matrix views self._A_patches[p] on patches of color p."""
-        u, r = TrialFunctions(self._W)
-        v, q = TestFunctions(self._W)
-
-        # Bilinear form on patches of color p
-        def a(p):
-            dxp = dx(subdomain_id=1, subdomain_data=self._cell_partitions[p])
-            return ( inner(u, v) - inner(r, div(v)) - inner(q, div(u)) )*dxp
-
         # Assemble matrix color by color
         # NOTE: assuming self._A is zeroed
         for p in xrange(self._color_num):
-            assemble(a(p), tensor=self._A_patches[p],
+            assemble(self.a(p), tensor=self._A_patches[p],
                      add_values=True, finalize_tensor=False)
         self._A.apply('add')
 
