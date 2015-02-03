@@ -60,13 +60,12 @@ class FluxReconstructor(object):
         return ( inner(u, v) - inner(r, div(v)) - inner(q, div(u)) )*self.dp(p)
 
 
-    def reconstruct(self, u, f):
-        """Takes u, f and reconstructs H(div) gradient flux. Returns mixed
-        function (q, r) where q approximates -grad(u) on RT space."""
+    def reconstruct(self, *rhs_coefficients):
+        # TODO: Add docstring!
         # Assemble rhs color by color
         self._b.zero()
         for p in xrange(self._color_num):
-            assemble(self.L(p, u, f), tensor=self._b_patches[p],
+            assemble(self.L(p, *rhs_coefficients), tensor=self._b_patches[p],
                      add_values=True, finalize_tensor=False)
         self._b.apply('add')
 
