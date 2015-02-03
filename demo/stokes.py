@@ -84,7 +84,7 @@ for N in [2**i for i in xrange(2, 7)]:
     err_est = assemble ( ( inner(grad(u)-q, grad(u)-q)**0.5
                          + Constant(h/pi)*inner(div(q)-grad(p)+f, div(q)-grad(p)+f)**0.5
                          )**2*dx
-                         + div(u)*div(u)*dx
+                         + 1.0/beta*div(u)*div(u)*dx
                        ) ** 0.5
     #err_est *= Au
     info_red('Estimator %g, energy_error %g' % (err_est, energy_error))
