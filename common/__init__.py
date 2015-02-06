@@ -6,6 +6,11 @@ from petsc4py import PETSc
 from dolfin import SubSystemsManager
 assert not SubSystemsManager.responsible_petsc()
 
+# Enable info_{green,red,blue}
+import ufl
+ufl.set_level(ufl.INFO)
+
+
 from flux_reconstructor import FluxReconstructor
 
 __all__ = ['FluxReconstructor']
