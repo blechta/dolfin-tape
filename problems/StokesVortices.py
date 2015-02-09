@@ -22,22 +22,21 @@ class NewtonianFluid(object):
 
 class StokesVortices(GeneralizedStokesProblem):
     n = 4 # Number of vortices
-    mu = 1.0 # Do not change; exact quantities below assume unit viscosity
+    mu = 1.0
     u_ex = Expression(('+pow(sin(n*pi*x[0]), 2) * sin(2.0*n*pi*x[1])',
                        '-pow(sin(n*pi*x[1]), 2) * sin(2.0*n*pi*x[0])'),
                       n=n, degree=6)
     p_ex = Expression('0.0')
-    s_ex = 2.0*mu*Expression(
-            (('2.0*n*pi*sin(2.0*n*pi*x[0])*sin(2.0*n*pi*x[1])',
-              '2.0*n*pi*( -pow(sin(n*pi*x[0]), 2)*pow(sin(n*pi*x[1]), 2) '
-                        ' + 0.5*pow(cos(n*pi*x[0]), 2)*pow(sin(n*pi*x[1]), 2) '
-                        ' + 0.5*pow(cos(n*pi*x[0]), 2)*pow(sin(n*pi*x[1]), 2) )'),
-             ('2.0*n*pi*sin(2.0*n*pi*x[0])*sin(2.0*n*pi*x[1])',
-              '2.0*n*pi*( -pow(sin(n*pi*x[0]), 2)*pow(sin(n*pi*x[1]), 2) '
-                        ' + 0.5*pow(cos(n*pi*x[0]), 2)*pow(sin(n*pi*x[1]), 2) '
-                        ' + 0.5*pow(cos(n*pi*x[0]), 2)*pow(sin(n*pi*x[1]), 2) )')),
+    s_ex = 2.0*Constant(mu)*Expression(
+            (('n*pi*sin(2.0*n*pi*x[0])*sin(2.0*n*pi*x[1])',
+              'n*pi*( pow(sin(n*pi*x[0]), 2)*cos(2.0*n*pi*x[1])  '
+              '     - pow(sin(n*pi*x[1]), 2)*cos(2.0*n*pi*x[0]) )'),
+             ('n*pi*( pow(sin(n*pi*x[0]), 2)*cos(2.0*n*pi*x[1])  '
+              '     - pow(sin(n*pi*x[1]), 2)*cos(2.0*n*pi*x[0]) )',
+              '-n*pi*sin(2.0*n*pi*x[0])*sin(2.0*n*pi*x[1])')),
              n=n, degree=6)
-    f = Expression(('+2.0*n*n*pi*pi*( 2.0*pow(sin(n*pi*x[0]), 2) - cos(2.0*n*pi*x[0]) ) * sin(2.0*n*pi*x[1])',
+    f = Constant(mu)* \
+        Expression(('+2.0*n*n*pi*pi*( 2.0*pow(sin(n*pi*x[0]), 2) - cos(2.0*n*pi*x[0]) ) * sin(2.0*n*pi*x[1])',
                     '-2.0*n*n*pi*pi*( 2.0*pow(sin(n*pi*x[1]), 2) - cos(2.0*n*pi*x[1]) ) * sin(2.0*n*pi*x[0])'),
                    n=n, degree=6)
 
@@ -88,10 +87,11 @@ class StokesVortices(GeneralizedStokesProblem):
         res_2, q = TrialFunction(lifting_2_space), TestFunction(lifting_2_space)
         res_3, t = TrialFunction(lifting_3_space), TestFunction(lifting_3_space)
         res_3, t = deviatoric(res_3), deviatoric(t)
-        residual_1 = ( dot(f, v) - inner(s_h - p_h*I, grad(v)) )*dx
+        # FIXME: Which way is better? Former does not need exact solutions at all!
+        #residual_1 = ( dot(f, v) - inner(s_h - p_h*I, grad(v)) )*dx
+        residual_1 = (  inner(self.s_ex - self.p_ex*I, grad(v)) - inner(s_h - p_h*I, grad(v)) )*dx
         residual_2 = -div(u_h)*q*dx
-        # FIXME: We take deviatoric part of deformation rate. Is it correct?
-        residual_3 = -inner(g(s_h, dev(sym(grad(u_h)))), t)*dx
+        residual_3 = -inner(dev(g(s_h, sym(grad(u_h)))), t)*dx
         a_1 = inner(grad(res_1), grad(v))*dx
         a_2 = res_2*q*dx
         a_3 = inner(res_3, t)*dx
