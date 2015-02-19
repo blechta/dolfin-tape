@@ -35,10 +35,9 @@ class StokesVortices(GeneralizedStokesProblem):
               '     - pow(sin(n*pi*x[1]), 2)*cos(2.0*n*pi*x[0]) )',
               '-n*pi*sin(2.0*n*pi*x[0])*sin(2.0*n*pi*x[1])')),
              n=n, degree=6)
-    f = Constant(mu)* \
-        Expression(('+2.0*n*n*pi*pi*( 2.0*pow(sin(n*pi*x[0]), 2) - cos(2.0*n*pi*x[0]) ) * sin(2.0*n*pi*x[1])',
-                    '-2.0*n*n*pi*pi*( 2.0*pow(sin(n*pi*x[1]), 2) - cos(2.0*n*pi*x[1]) ) * sin(2.0*n*pi*x[0])'),
-                   n=n, degree=6)
+    f = Expression(('+2.0*mu*n*n*pi*pi*( 2.0*pow(sin(n*pi*x[0]), 2) - cos(2.0*n*pi*x[0]) ) * sin(2.0*n*pi*x[1])',
+                    '-2.0*mu*n*n*pi*pi*( 2.0*pow(sin(n*pi*x[1]), 2) - cos(2.0*n*pi*x[1]) ) * sin(2.0*n*pi*x[0])'),
+                   mu=mu, n=n, degree=6)
 
     def __init__(self, N):
         mesh = UnitSquareMesh(N, N, "crossed")
