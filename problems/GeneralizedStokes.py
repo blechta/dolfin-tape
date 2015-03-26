@@ -136,7 +136,7 @@ class GeneralizedStokesProblem(object):
         beta = Constant(0.1)
         gamma = Constant(0.1)
 
-        # Compure estimators
+        # Compute estimators
         DG0 = FunctionSpace(mesh, 'DG', 0)
         v = TestFunction(DG0)
         eta_R_s = assemble(Constant(C_P**r1/alpha**r1)*h*inner(f+div(q), f+div(q))**(r1/2)*v*dx)
@@ -145,7 +145,7 @@ class GeneralizedStokesProblem(object):
         # FIXME: Fix eta_I (4.3d) in paper =- there should be deviatoric part of g
         #eta_I_r = assemble(Constant(1.0/gamma**r)*inner(g(s, d), g(s, d))**(r/2)*v*dx)
         eta_I_r = assemble(Constant(1.0/gamma**r)*inner(dev(g(s, d)), dev(g(s, d)))**(r/2)*v*dx)
-        # TODO: Implement VecPow from PETScA
+        # TODO: Implement VecPow from PETSc
         # TODO: Avoid drastic numpy manipulations
         eta_R = eta_R_s.array() ** (1.0/r1)
         eta_F = eta_F_s.array() ** (1.0/r1)
@@ -165,3 +165,51 @@ class GeneralizedStokesProblem(object):
                  % (Eta_1, Eta_2, Eta_3))
 
         return Eta_1, Eta_2, Eta_3, eta_1, eta_2, eta_3
+
+
+    def compute_exact_bounds(self, u_ex, p_ex, s_ex):
+        w = self._w
+        mesh = self._w.function_space().mesh()
+        r = self._constitutive_law.r()
+        mu = self._constitutive_law.mu()
+
+        u, p, s = w.split()
+        s = deviatoric(s)
+
+        # Dual Lebesgue exponent; denoted s in the paper
+        r1 = r/(r-1)
+        # r/2 is dangerous for integer r != 2
+        assert isinstance(r, float) and isinstance(r1, float) or r == r1 == 2
+        # FIXME: Wrap float r, r1 by Constant to avoid code generation bloat
+
+        # Weight for residual norm for momentum equation
+        alpha = (2.0*float(mu))**(1.0/r)
+
+        I = Identity(mesh.geometry().dim())
+
+        # Assemble lower and upper local estimates
+        DG0 = FunctionSpace(mesh, 'DG', 0)
+        v = TestFunction(DG0)
+        lower = Function(DG0)
+        upper = Function(DG0)
+        normalization_factor = alpha*assemble(inner(grad(u-u_ex), grad(u-u_ex))**(r/2)*dx)**(1.0/r)
+        assemble(Constant(1.0/normalization_factor)
+                 * inner(s-p*I-(s_ex-p_ex*I), grad(u-u_ex)) * v * dx,
+                 tensor=lower.vector())
+        assemble(Constant(1.0/alpha)
+                 * inner(s-p*I-(s_ex-p_ex*I), s-p*I-(s_ex-p_ex*I))**(r1/2)
+                 * v * dx,
+                 tensor=upper.vector())
+
+        # Gather global bounds
+        Lower = lower.vector().sum()
+        Upper = upper.vector().sum()**(1.0/r1)
+
+        # Prepare local (non-additive) version of upper estimate
+        # TODO: Implement VecPow from PETSc
+        # TODO: Avoid drastic numpy manipulations
+        upper.vector()[:] = upper.vector().array()**(1.0/r1)
+
+        info_red("Bounds ||R_1||_L, ||R_1||_U: %g, %g" % (Lower, Upper))
+
+        return Lower, Upper, lower, upper
