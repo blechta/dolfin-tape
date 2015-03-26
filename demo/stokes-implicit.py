@@ -1,5 +1,6 @@
 import dolfin
 import matplotlib.pyplot as plt
+from matplotlib import gridspec
 import numpy as np
 
 from problems.StokesVortices import StokesVortices
@@ -26,15 +27,16 @@ err = np.array(err, dtype='float')
 est = np.array(est, dtype='float')
 bnd = np.array(bnd, dtype='float')
 
+gs = gridspec.GridSpec(3, 2, width_ratios=[7, 1])
 for i in xrange(3):
-    plt.subplot(3, 1, i+1)
-    plt.plot(mesh_resolutions, err[:, i], 'o-')
-    plt.plot(mesh_resolutions, est[:, i], 'o-')
+    plt.subplot(gs[2*i])
+    plt.plot(mesh_resolutions, err[:, i], 'o-', label='err')
+    plt.plot(mesh_resolutions, est[:, i], 'o-', label='est')
     if i == 0:
-        plt.plot(mesh_resolutions, bnd[:, 0], 'o-')
-        plt.plot(mesh_resolutions, bnd[:, 1], 'o-')
+        plt.plot(mesh_resolutions, bnd[:, 0], 'o-', label='lo')
+        plt.plot(mesh_resolutions, bnd[:, 1], 'o-', label='up')
     plt.loglog()
-
+    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 plt.tight_layout()
 plt.show(block=True)
 
