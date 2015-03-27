@@ -5,6 +5,10 @@ import numpy as np
 
 from problems.StokesVortices import StokesVortices
 
+
+# Reduce pivotting of LU solver
+dolfin.PETScOptions.set('mat_mumps_cntl_1', 0.001)
+
 mesh_resolutions = [4, 8, 16, 32, 64]
 err, est, bnd = [], [], []
 
@@ -23,21 +27,23 @@ for N in mesh_resolutions:
     bnd.append([low_1, upp_1])
 
 
-err = np.array(err, dtype='float')
-est = np.array(est, dtype='float')
-bnd = np.array(bnd, dtype='float')
+if dolfin.MPI.rank(dolfin.mpi_comm_world()) == 0:
+    err = np.array(err, dtype='float')
+    est = np.array(est, dtype='float')
+    bnd = np.array(bnd, dtype='float')
 
-gs = gridspec.GridSpec(3, 2, width_ratios=[7, 1])
-for i in xrange(3):
-    plt.subplot(gs[2*i])
-    plt.plot(mesh_resolutions, err[:, i], 'o-', label='err')
-    plt.plot(mesh_resolutions, est[:, i], 'o-', label='est')
-    if i == 0:
-        plt.plot(mesh_resolutions, bnd[:, 0], 'o-', label='lo')
-        plt.plot(mesh_resolutions, bnd[:, 1], 'o-', label='up')
-    plt.loglog()
-    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-plt.tight_layout()
-plt.show(block=True)
+    gs = gridspec.GridSpec(3, 2, width_ratios=[7, 1])
+    for i in xrange(3):
+        plt.subplot(gs[2*i])
+        plt.plot(mesh_resolutions, err[:, i], 'o-', label='err')
+        plt.plot(mesh_resolutions, est[:, i], 'o-', label='est')
+        if i == 0:
+            plt.plot(mesh_resolutions, bnd[:, 0], 'o-', label='lo')
+            plt.plot(mesh_resolutions, bnd[:, 1], 'o-', label='up')
+        plt.loglog()
+        plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+    plt.tight_layout()
+    dolfin.info('Blocking matplotlib figure on rank 0. Close to continue...')
+    plt.show()
 
 dolfin.interactive()

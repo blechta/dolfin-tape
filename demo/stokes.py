@@ -1,7 +1,4 @@
 from dolfin import *
-import ufl
-ufl.set_level(ufl.INFO) # Enable info_{green,red,blue}
-
 import matplotlib.pyplot as plt
 import numpy as np
 
