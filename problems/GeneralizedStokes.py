@@ -90,6 +90,7 @@ class GeneralizedStokesProblem(object):
     def estimate_errors(self):
         w = self._w
         mesh = self._w.function_space().mesh()
+        comm = mesh.mpi_comm()
         reconstructor = self.reconstructor()
         f = self._f
         r = self._constitutive_law.r()
@@ -154,9 +155,9 @@ class GeneralizedStokesProblem(object):
         eta_1.vector()[:] = eta_R + eta_F
         eta_2.vector()[:] = eta_D
         eta_3.vector()[:] = eta_I
-        Eta_1 = np.sum(eta_1.vector().array() ** r1) ** (1.0/r1)
-        Eta_2 = np.sum(eta_2.vector().array() ** r) ** (1.0/r)
-        Eta_3 = np.sum(eta_3.vector().array() ** r) ** (1.0/r)
+        Eta_1 = MPI.sum(comm, np.sum(eta_1.vector().array() ** r1)) ** (1.0/r1)
+        Eta_2 = MPI.sum(comm, np.sum(eta_2.vector().array() ** r)) ** (1.0/r)
+        Eta_3 = MPI.sum(comm, np.sum(eta_3.vector().array() ** r)) ** (1.0/r)
 
         info_red("Estimators for ||R_1||, ||R_2||, ||R_3||: %g, %g, %g"
                  % (Eta_1, Eta_2, Eta_3))
