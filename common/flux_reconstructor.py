@@ -537,6 +537,6 @@ class FluxReconstructor(object):
         del self._off_process_owner, self._local_to_global_patches
 
         # This is not really deleted now as it is referenced by tensor views
-        self._dof_mapping
+        del self._dof_mapping
 
         # TODO: Clear unneeded mesh connectivity
