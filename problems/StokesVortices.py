@@ -106,12 +106,11 @@ class StokesVortices(GeneralizedStokesProblem):
         solve(a_1 == residual_1, res_1, bcs=bc_1)
         solve(a_2 == residual_2, res_2)
         solve(a_3 == residual_3, res_3)
-        res_3 = deviatoric(res_3)
         Res_1 = 1.0/alpha*norm(res_1, norm_type="H10")
         Res_2 = 1.0/beta*norm(res_2, norm_type="L2")
         # FIXME: This will not work as norm accepts only GenericFunction / GenericVector
-        #Res_3 = 1.0/gamma*norm(res_3, norm_type="L2")
-        Res_3 = 1.0/gamma*assemble(inner(res_3, res_3)*dx)**0.5
+        #Res_3 = 1.0/gamma*norm(deviatoric(res_3), norm_type="L2")
+        Res_3 = 1.0/gamma*assemble(inner(deviatoric(res_3), deviatoric(res_3))*dx)**0.5
 
         info_red("Residual norms seem to be %g, %g, %g"
                  % (Res_1, Res_2, Res_3))
