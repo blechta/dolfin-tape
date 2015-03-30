@@ -211,3 +211,45 @@ class GeneralizedStokesProblem(object):
         info_red("Bounds ||R_1||_L, ||R_1||_U: %g, %g" % (Lower, Upper))
 
         return Lower, Upper, lower, upper
+
+
+    def compute_errors(self):
+        mesh = self._w.function_space().mesh()
+
+        # Grab approximate solution and rhs
+        u_h, p_h, s_h = self._w.split()
+        s_h = deviatoric(s_h)
+        I = Identity(s_h.shape()[0])
+        f = self.f
+
+        # Grab constitutive parameters
+        r = self._constitutive_law.r()
+        mu = self._constitutive_law.mu()
+
+        # Weights for measuring residual errors for 3 equations
+        alpha = (2.0*float(mu))**(1.0/r)
+
+        if r != 2:
+            raise NotImplementedError("Momentum resdidual lifting only "
+            "implemented for p == 2.")
+
+        # Use large degree for lifting residual_1 to H^1_0 to reduce
+        # discretization error
+        u_h_degree = u_h.function_space().ufl_element().degree()
+        f_degree = f.ufl_element().degree()
+        # TODO: Review this! f_degree=6 !
+        lifting_1_degree = max(u_h_degree + 2, f_degree)
+        lifting_1_space = VectorFunctionSpace(mesh, "Lagrange", lifting_1_degree)
+        res_1, v = TrialFunction(lifting_1_space), TestFunction(lifting_1_space)
+        residual_1 = ( dot(f, v) - inner(s_h - p_h*I, grad(v)) )*dx
+        a_1 = inner(grad(res_1), grad(v))*dx
+        res_1 = Function(lifting_1_space)
+        bc_1 = DirichletBC(lifting_1_space, res_1.value_dimension(0)*(0.0,), "on_boundary")
+        solve(a_1 == residual_1, res_1, bcs=bc_1)
+        Res_1 = 1.0/alpha*norm(res_1, norm_type="H10")
+
+        info_red("||R_1||_lifting = %g" % Res_1)
+
+        # FIXME: res_1 is wrongly scaled!
+        #return Res_1, res_1
+        return Res_1, None
