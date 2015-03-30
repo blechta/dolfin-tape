@@ -184,29 +184,30 @@ class GeneralizedStokesProblem(object):
         alpha = (2.0*float(mu))**(1.0/r)
 
         I = Identity(mesh.geometry().dim())
-
-        # Assemble lower and upper local estimates
         DG0 = FunctionSpace(mesh, 'DG', 0)
         v = TestFunction(DG0)
+
+        # Lower estimate
         lower = Function(DG0)
-        upper = Function(DG0)
-        normalization_factor = alpha*assemble(inner(grad(u-u_ex), grad(u-u_ex))**(r/2)*dx)**(1.0/r)
-        assemble(Constant(1.0/normalization_factor)
-                 * inner(s-p*I-(s_ex-p_ex*I), grad(u-u_ex)) * v * dx,
+        normalization_factors = assemble(inner(grad(u-u_ex),
+                                               grad(u-u_ex))
+                                         **(r/2) * v * dx)
+        normalization_factor_global = alpha*normalization_factors.sum()**(1.0/r)
+        # TODO: Use VecPow, avoid numpy
+        normalization_factors[:] = alpha*normalization_factors.array()**(1.0/r)
+        assemble(inner(s-p*I-(s_ex-p_ex*I), grad(u-u_ex))*v*dx,
                  tensor=lower.vector())
-        assemble(Constant(1.0/alpha)
-                 * inner(s-p*I-(s_ex-p_ex*I), s-p*I-(s_ex-p_ex*I))**(r1/2)
-                 * v * dx,
+        Lower = lower.vector().sum()/normalization_factor_global
+        as_backend_type(lower.vector()).vec().__idiv__(
+                 as_backend_type(normalization_factors).vec())
+
+        # Upper estimate
+        upper = Function(DG0)
+        assemble(inner(s-p*I-(s_ex-p_ex*I), s-p*I-(s_ex-p_ex*I))**(r1/2)*v*dx,
                  tensor=upper.vector())
-
-        # Gather global bounds
-        Lower = lower.vector().sum()
-        Upper = upper.vector().sum()**(1.0/r1)
-
-        # Prepare local (non-additive) version of upper estimate
-        # TODO: Implement VecPow from PETSc
-        # TODO: Avoid drastic numpy manipulations
-        upper.vector()[:] = upper.vector().array()**(1.0/r1)
+        Upper = upper.vector().sum()**(1.0/r1) / alpha
+        # TODO: Use VecPow, avoid numpy
+        upper.vector()[:] = upper.vector().array()**(1.0/r1) / alpha
 
         info_red("Bounds ||R_1||_L, ||R_1||_U: %g, %g" % (Lower, Upper))
 

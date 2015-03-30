@@ -1,1 +1,11 @@
 *.pyc
+
+*.pvd
+*.vtu
+*.pvtu
+
+*.xdmf
+*.h5
+
+*.png
+*.pdf
