@@ -69,7 +69,7 @@ namespace dolfin
           return _dim1;
         default:
           dolfin_error("MatrixView.h",
-                       "return indices of MatrixView",
+                       "return size of MatrixView",
                        "Supplied dim is wrong");
       }
     }

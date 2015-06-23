@@ -4,7 +4,8 @@ __all__ = ['CellDiameters']
 
 
 def CellDiameters(mesh):
-    # TODO: Document
+    """Returns piece-wise constant Expression defined as cell diameter,
+    i.e. maximum edge length for simplices."""
     element = FiniteElement('Discontinuous Lagrange', mesh, 0)
     e = Expression(cell_diameters_cpp_code, element=element)
     return e
