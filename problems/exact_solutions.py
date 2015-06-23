@@ -5,6 +5,17 @@ __all__ = ["pStokes_vortices"]
 
 
 def pStokes_vortices(*args, **kwargs):
+    """Returns 4-tuple of DOLFIN Expressions initialized with *args and
+    **kwargs passed in and solving no-slip p-Stokes problem on unit square
+    as velocity, pressure, extra stress and body force.
+
+    Mandatory kwargs:
+      kwargs['eps'] >= 0.0 ... amount of regularization
+      kwargs['n'] uint     ... number of vortices in each direction
+      kwargs['mu'] > 0.0   ... 'viscosity'
+    Optional kwargs:
+      kwargs['r'] > 1.0    ... power-law exponent, default 2
+    """
     from dolfin import Expression
     if kwargs.get('r', 2) == 2:
         codes = _pStokes_vortices_ccode(r=2)
