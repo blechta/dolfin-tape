@@ -29,7 +29,6 @@ class FluxReconstructor(object):
         self._init_tensors()
         self._clear()
         self._assemble_matrix()
-        self._compress_matrix()
         self._setup_solver()
 
         # Prepare hat functions
@@ -148,18 +147,6 @@ class FluxReconstructor(object):
         self._assemble_matrix = lambda *args, **kwargs: on_second_call()
 
 
-    def _compress_matrix(self):
-        """Removes (nearly) zero entries from self._A sparsity pattern."""
-        # TODO: Rather do better preallocation than compression
-        info_blue('Num nonzeros before compression: %d'%self._A.nnz())
-        tic()
-        A = PETScMatrix()
-        self._A.compressed(A)
-        self._A = A
-        info_blue('Compression time: %g'%toc())
-        info_blue('Num nonzeros after compression: %d'%self._A.nnz())
-
-
     def _setup_solver(self):
         """Initilize Cholesky solver for solving flux reconstruction."""
         # Diagnostic output
@@ -272,13 +259,15 @@ class FluxReconstructor(object):
                 return global_patch_dof - patches_dim_offset
             else:
                 return global_to_local_patches_dict[global_patch_dof]
+        global_to_local_patches = np.vectorize(global_to_local_patches,
+                                               otypes=[la_index_dtype()])
 
         # Initialize sparsity pattern
         pattern.init(comm,
             np.array(2*(patches_dim_global,), dtype='uintp'),
             np.array(2*((patches_dim_offset, patches_dim_offset + patches_dim_owned), ), dtype='uintp'),
             [local_to_global_patches, local_to_global_patches],
-            [off_process_owner, []],
+            [off_process_owner, np.array((), dtype='intc')],
             np.array((1, 1), dtype='uintp'))
 
         # Build sparsity pattern for mixed Laplacian
@@ -301,9 +290,9 @@ class FluxReconstructor(object):
                 pattern.insert_global([DG_dofs_patch,       RT_dofs_patch])
                 if RT_dofs_patch_unowned.size > 0:
                     assert MPI.size(comm) > 1
-                    DG_dofs_patch = map(global_to_local_patches, DG_dofs_patch)
-                    RT_dofs_patch = map(global_to_local_patches, RT_dofs_patch)
-                    RT_dofs_patch_unowned = map(global_to_local_patches, RT_dofs_patch_unowned)
+                    DG_dofs_patch = global_to_local_patches(DG_dofs_patch)
+                    RT_dofs_patch = global_to_local_patches(RT_dofs_patch)
+                    RT_dofs_patch_unowned = global_to_local_patches(RT_dofs_patch_unowned)
                     pattern.insert_local([RT_dofs_patch_unowned, RT_dofs_patch])
                     pattern.insert_local([RT_dofs_patch_unowned, DG_dofs_patch])
         pattern.apply()
@@ -462,7 +451,7 @@ class FluxReconstructor(object):
                 = np.empty(patches_dim-patches_dim_owned, dtype='intc')
         # Maps from unowned local patch dof to global patch dof; Cp': ip' -> Ip
         self._local_to_global_patches = local_to_global_patches \
-                = np.empty(patches_dim-patches_dim_owned, dtype=la_index_dtype())
+                = np.empty(patches_dim-patches_dim_owned, dtype='uintp')
 
         # Add unowned DOFs to dof_mapping
         dof_counter = 0
