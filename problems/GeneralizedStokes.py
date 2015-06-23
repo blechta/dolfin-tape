@@ -54,10 +54,6 @@ class GeneralizedStokesProblem(object):
         g = constitutive_law.g()
         F = ( inner(s, grad(v)) - p*div(v) - q*div(u) + inner(g(s, d), t) - inner(f, v) )*dx
 
-        # Add some diagonal zeros to make PETSc happy; this could be solved
-        # also with Assembler option keep_diagonal
-        F += Constant(0.0)*p*q*dx
-
         bc_u = DirichletBC(W.sub(0), (0.0, 0.0), lambda x, b: b)
         bc_p = DirichletBC(W.sub(1), 0.0, "near(x[0], 0.0) && near(x[1], 0.0)", method="pointwise")
 
@@ -140,8 +136,6 @@ class GeneralizedStokesProblem(object):
         eta_R_s = assemble(Constant(C_P**r1/alpha**r1)*h*inner(f+div(q), f+div(q))**(r1/2)*v*dx)
         eta_F_s = assemble(Constant(1.0/alpha**r1)*inner(s-p*I-q, s-p*I-q)**(r1/2)*v*dx)
         eta_D_r = assemble(Constant(1.0/beta**r)*div(u)**r*v*dx)
-        # FIXME: Fix eta_I (4.3d) in paper =- there should be deviatoric part of g
-        #eta_I_r = assemble(Constant(1.0/gamma**r)*inner(g(s, d), g(s, d))**(r/2)*v*dx)
         eta_I_r = assemble(Constant(1.0/gamma**r)*inner(dev(g(s, d)), dev(g(s, d)))**(r/2)*v*dx)
         # TODO: Implement VecPow from PETSc
         # TODO: Avoid drastic numpy manipulations
