@@ -176,10 +176,11 @@ class FluxReconstructor(object):
         self._solver = solver = PETScLUSolver_no_configure('mumps')
         #self._solver = solver = PETScLUSolver('superlu_dist')
         solver.set_operator(self._A)
-        # FIXME: Allow Cholesky only with fixed version of PETSc
-        #        https://bitbucket.org/petsc/petsc/issue/81
-        #        Wait for next PETSc release and check PETSc version.
-        solver.parameters['symmetric'] = True
+
+        # Allow Cholesky only with PETSc having fixed
+        # https://bitbucket.org/petsc/petsc/issue/81
+        if PETSc.Sys.getVersion() >= (3, 5, 3):
+            solver.parameters['symmetric'] = True
         solver.parameters['reuse_factorization'] = True
 
         # TODO: Does not work because PETScLUSolver::configure_ksp is called
