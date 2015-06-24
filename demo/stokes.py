@@ -81,10 +81,16 @@ for N in [2**i for i in xrange(2, 7)]:
 
 results = np.array(results, dtype='float')
 
+def slope(x0, y0, power):
+    return lambda x: y0*(x/x0)**power
+
 # Plot comparison of errors and estimates
 plt.subplot(2, 1, 1)
 plt.plot(results[:, 0], results[:, 2], 'o-', label='estimate')
 plt.plot(results[:, 0], results[:, 3], 'o-', label='error')
+plt.plot(results[:, 0],
+         map(slope(results[0, 0], 3.0*results[0, 2], -2.0), results[:, 0]),
+         'k--', label=r'$C\,h^2$')
 plt.title('Error and its estimate')
 plt.xlabel(r'$1/h$')
 plt.ylabel(r'$(||\mathbf{\nabla u-\nabla u}_h||_2^2'
@@ -95,10 +101,14 @@ plt.legend()
 # Plot timing of flux reconstructions
 plt.subplot(2, 1, 2)
 plt.plot(results[:, 1], results[:, 4], 'o-')
+plt.plot(results[:, 1],
+         map(slope(results[0, 1], 3.0*results[0, 4], 1.0), results[:, 1]),
+         'k--', label='linear scaling')
 plt.title('Flux reconstructor timing')
 plt.xlabel('#DOFs')
 plt.ylabel('t [s]')
 plt.loglog()
+plt.legend()
 
 plt.tight_layout()
 plt.show(block=True)
