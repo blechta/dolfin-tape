@@ -1,3 +1,15 @@
+"""This script solves generalized Stokes problem in the framework of implicit
+constitutive theory for data with known, manufactured solution and
+demonstrates efficiency of an error estimate using equilibrated stress
+reconstruction as described in
+
+    [J. Blechta, J. M\'alek, M. Vohral\'ik, Generalized Stokes flows of
+    implicitly constituted fluids: a posteriori error control and full
+    adaptivity, in preparation, 2016.]
+
+TODO: This implements Newtonian fluid. Prepare non-Newtonian.
+"""
+
 import dolfin
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
