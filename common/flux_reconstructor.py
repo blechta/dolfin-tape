@@ -41,6 +41,7 @@ class FluxReconstructor(object):
 
 
     def L(self, p, u, f):
+        # FIXME: Consolidate notation. It's very confusing, i.e different q here and below
         """Returns rhs linear form for flux reconstruction on patches p s.t.
         resulting flux q
           * reconstructs q ~ -grad(u)
