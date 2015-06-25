@@ -1,5 +1,5 @@
-"""This script solves Stokes problem for data with known solution and
-demonstrates efficiency of an error estimate using equilibrated stress
+"""This script solves Stokes problem for data with known, manufactured solution
+and demonstrates efficiency of an error estimate using equilibrated stress
 reconstruction in a spirit similar to
 
     [A. Hannukainen, R. Stenberg, and M. Vohral\'ik, A unified framework for
@@ -22,17 +22,19 @@ from problems.exact_solutions import pStokes_vortices
 results = []
 
 for N in [2**i for i in xrange(2, 7)]:
-    # Solve Stokes problem
     mesh = UnitSquareMesh(N, N, 'crossed')
+
+    # Retrieve manufactured solution
+    u_ex, p_ex, _, f = pStokes_vortices(n=4, mu=1.0, r=2, eps=0.0,
+                                        degree=6, domain=mesh)
+
+    # Solve Stokes problem
     V = VectorFunctionSpace(mesh, 'CG', 2)
     Q = FunctionSpace(mesh, 'CG', 1)
     W = V*Q
     u, p = TrialFunctions(W)
     v, q = TestFunctions(W)
     a = ( inner(grad(u), grad(v)) - p*div(v) - q*div(u) )*dx
-    # Retrieve manufactured solution
-    u_ex, p_ex, _, f = pStokes_vortices(n=4, mu=1.0, r=2, eps=0.0,
-                                        degree=6, domain=mesh)
     L = inner(f, v)*dx
     bc_u = DirichletBC(W.sub(0), (0.0, 0.0), lambda x, b: b)
     bc_p = DirichletBC(W.sub(1), 0.0, "near(x[0], 0.0) && near(x[1], 0.0)",
@@ -46,7 +48,7 @@ for N in [2**i for i in xrange(2, 7)]:
     p.vector()[:] -= assemble(p*dx)/assemble(Constant(1.0)*dx(mesh))
 
     # Reconstruct extra stress q in H(div)
-    reconstructor = FluxReconstructor(mesh, 2) # TODO: Is it correct degree?
+    reconstructor = FluxReconstructor(mesh, 2)
     q = []
     tic()
     for i in range(mesh.geometry().dim()):
