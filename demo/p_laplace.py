@@ -6,19 +6,6 @@ from common import FluxReconstructor
 from common.cell_diameter import CellDiameters
 
 
-class NonlinearFluxReconstructor(FluxReconstructor):
-    def L(self, p, S, f):
-        """Returns rhs linear form for flux reconstruction on patches p s.t.
-        resulting flux q \in H^p1(div) fulfills
-          * reconstructs q ~ -S
-          * equilibrates div(q) ~ f."""
-        v, q = TestFunctions(self._W)
-        hat = self._hat
-        return ( -hat[p]*inner(S, v)
-                 -hat[p]*f*q
-                 +inner(grad(hat[p]), S)*q )*self.dp(p)
-
-
 mesh = UnitSquareMesh(40, 40, 'crossed')
 V = FunctionSpace(mesh, 'Lagrange', 1)
 DG0 = FunctionSpace(mesh, 'DG', 0)
@@ -26,7 +13,7 @@ f = Expression("1.+cos(2.*pi*x[0])*sin(2.*pi*x[1])", domain=mesh, degree=2)
 
 # Initialize mesh reconstructior once - the system matrix is the same
 tic()
-reconstructor = NonlinearFluxReconstructor(mesh, 1)
+reconstructor = FluxReconstructor(mesh, 1)
 info_green('Flux reconstructor initialization timing: %g seconds' % toc())
 
 

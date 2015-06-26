@@ -40,17 +40,17 @@ class FluxReconstructor(object):
         return Measure("dx", subdomain_id=1, subdomain_data=self._cell_partitions[p])
 
 
-    def L(self, p, u, f):
+    def L(self, p, D, f):
         # FIXME: Consolidate notation. It's very confusing, i.e different q here and below
         """Returns rhs linear form for flux reconstruction on patches p s.t.
         resulting flux q
-          * reconstructs q ~ -grad(u)
+          * reconstructs q ~ -D
           * equilibrates div(q) ~ f."""
         v, q = TestFunctions(self._W)
         hat = self._hat
-        return ( -hat[p]*inner(grad(u), v)
+        return ( -hat[p]*inner(D, v)
                  -hat[p]*f*q
-                 +inner(grad(hat[p]), grad(u))*q )*self.dp(p)
+                 +inner(grad(hat[p]), D)*q )*self.dp(p)
 
     def a(self, p):
         """Returns bilinear form for flux reconstruction on patches of color p.

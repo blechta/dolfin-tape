@@ -37,7 +37,7 @@ for N in [2**i for i in range(2, 7)]:
     # Reconstruct flux q in H(div)
     reconstructor = FluxReconstructor(mesh, 1)
     tic()
-    w = reconstructor.reconstruct(u, f)
+    w = reconstructor.reconstruct(grad(u), f)
     t_flux_reconstructor = toc()
     info_green('Flux reconstruction timing: %g' % t_flux_reconstructor)
     q = Function(w, 0)

@@ -52,7 +52,7 @@ for N in [2**i for i in xrange(2, 7)]:
     q = []
     tic()
     for i in range(mesh.geometry().dim()):
-        w = reconstructor.reconstruct(-u[i], -f[i] + p.dx(i))
+        w = reconstructor.reconstruct(-grad(u[i]), -f[i] + p.dx(i))
         q.append(w.sub(0, deepcopy=True))
     t_flux_reconstructor = toc()
     info_green('Flux reconstruction timing: %g' % t_flux_reconstructor)
