@@ -1,3 +1,9 @@
+"""This script solves p-Laplace problem and shows how different components of
+residual-based equilibrated flux reconstruction error estimate behave.
+
+TODO: Add relevant reference.
+"""
+
 from dolfin import *
 import matplotlib.pyplot as plt
 import numpy as np
