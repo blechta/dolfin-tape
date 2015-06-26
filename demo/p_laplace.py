@@ -37,7 +37,6 @@ def solve_p_laplace(p, eps, u0=None):
     eps = Constant(eps)
 
     # Initial approximation for Newton
-    #u = u0.copy(deepcopy=True) if u0 else Function(V)
     u = u0 if u0 else Function(V)
 
     # Problem formulation
@@ -50,6 +49,7 @@ def solve_p_laplace(p, eps, u0=None):
     #       q ~ -S
     #   div q ~ f
     S = inner(grad(u), grad(u))**(0.5*p-1.0) * grad(u)
+    S_eps = (eps + inner(grad(u), grad(u)))**(0.5*p-1.0) * grad(u)
     tic()
     q = reconstructor.reconstruct(S, f).sub(0, deepcopy=False)
     info_green('Flux reconstruction timing: %g seconds' % toc())
@@ -58,21 +58,28 @@ def solve_p_laplace(p, eps, u0=None):
     v = TestFunction(DG0)
     h = CellDiameters(mesh)
     Cp = Constant(2.0*(0.5*p)**(1.0/p)) # Poincare estimates by [Chua, Wheeden 2006]
-    err0 = assemble(inner(S+q, S+q)**(0.5*p1)*v*dx)
-    err1 = assemble(((Cp*h*(f-div(q)))**2)**(0.5*p1)*v*dx)
+    est0 = assemble(((Cp*h*(f-div(q)))**2)**(0.5*p1)*v*dx)
+    est1 = assemble(inner(S_eps+q, S_eps+q)**(0.5*p1)*v*dx)
+    est2 = assemble(inner(S_eps-S, S_eps-S)**(0.5*p1)*v*dx)
     p1 = float(p1)
-    err0[:] = err0.array()**(1.0/p1) + err1.array()**(1.0/p1)
-    err_est = MPI.sum( mesh.mpi_comm(),
-                       (err0.array().__abs__()**p1).sum() )**(1.0/p1)
-    info_red('Error estimate %g' % err_est)
+    est_h   = est0.array()**(1.0/p1) + est1.array()**(1.0/p1)
+    est_eps = est2.array()**(1.0/p1)
+    est_tot = est_h + est_eps
+    Est_h   = MPI.sum( mesh.mpi_comm(), (est_h  **p1).sum() )**(1.0/p1)
+    Est_eps = MPI.sum( mesh.mpi_comm(), (est_eps**p1).sum() )**(1.0/p1)
+    Est_tot = MPI.sum( mesh.mpi_comm(), (est_tot**p1).sum() )**(1.0/p1)
+    info_red('Error estimates: dicretizaion %g, regularization %g, overall %g'
+             % (Est_h, Est_eps, Est_tot))
 
-    return u, err_est
+    return u, Est_h, Est_eps, Est_tot
 
 
 def plot_conv(p, errors):
     errors = np.array(errors, dtype='float')
-    plt.plot(errors[:, 0], errors[:, 1], 'o-', label='$p=%g$' % p)
-    plt.title(r'Error estimate of '
+    plt.plot(errors[:, 0], errors[:, 1], 'o-', label='$p=%g$ discretization'%p)
+    plt.plot(errors[:, 0], errors[:, 2], 'o-', label='$p=%g$ regularization'%p)
+    plt.plot(errors[:, 0], errors[:, 3], 'o-', label='$p=%g$ overall'%p)
+    plt.title(r'Error estimates of '
               r'$||f+\mathrm{div}|\nabla u|^\frac{p-2}{2}\nabla u||_{-1,p}$')
     plt.xlabel(r'$\epsilon$')
     plt.loglog()
@@ -84,20 +91,20 @@ if __name__ == '__main__':
     estimates = []
     u = None
     for eps in epsilons:
-        u, est = solve_p_laplace(p, eps, u)
-        estimates.append((eps, est))
+        u, est_h, est_eps, est_tot = solve_p_laplace(p, eps, u)
+        estimates.append((eps, est_h, est_eps, est_tot))
     plot(u, title='p-Laplace, p=%g, eps=%g'%(p, eps))
     plot_conv(p, estimates)
 
     p = 1.1
-    epsilons = [10.0**i for i in range(-10, -22, -2)]
+    epsilons = [10.0**i for i in range(0, -22, -2)]
     estimates = []
     for eps in epsilons:
-        u, est = solve_p_laplace(p, eps)
-        estimates.append((eps, est))
+        u, est_h, est_eps, est_tot = solve_p_laplace(p, eps)
+        estimates.append((eps, est_h, est_eps, est_tot))
     plot(u, title='p-Laplace, p=%g, eps=%g'%(p, eps))
     plot_conv(p, estimates)
 
-    plt.legend()
+    plt.legend(loc=3)
     plt.show(block=True)
     interactive()
