@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 from matplotlib import gridspec
 import numpy as np
 
-from problems.StokesVortices import StokesVortices
+from StokesVortices import StokesVortices
 
 
 # Reduce pivotting of LU solver
@@ -88,6 +88,7 @@ if dolfin.MPI.rank(dolfin.mpi_comm_world()) == 0:
 
     plt.tight_layout()
     dolfin.info('Blocking matplotlib figure on rank 0. Close to continue...')
+    plt.savefig(prefix+'/convergence.pdf')
     plt.show()
 
 dolfin.interactive()
