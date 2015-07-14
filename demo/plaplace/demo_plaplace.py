@@ -8,8 +8,7 @@ from dolfin import *
 import matplotlib.pyplot as plt
 import numpy as np
 
-from common import FluxReconstructor
-from common.cell_diameter import CellDiameters
+from dolfintape import FluxReconstructor, CellDiameters
 
 
 mesh = UnitSquareMesh(40, 40, 'crossed')
@@ -79,7 +78,7 @@ def plot_conv(p, errors):
 
 
 def run_demo(p, epsilons, zero_guess=False):
-    file = File('results/p%g.xdmf' % p)
+    file = XDMFFile(mesh.mpi_comm(), 'results/p%g.xdmf' % p)
     estimates = []
     u = Function(V)
     for eps in epsilons:
@@ -87,7 +86,8 @@ def run_demo(p, epsilons, zero_guess=False):
             u.vector().zero()
         u, est_h, est_eps, est_tot = solve_p_laplace(p, eps, u)
         estimates.append((eps, est_h, est_eps, est_tot))
-        file << (u, eps)
+        if MPI.size(mesh.mpi_comm()) == 1:
+            file << (u, eps) # FIXME: Deadlock in parallel! Why?
         plot(u, title='p-Laplace, p=%g, eps=%g'%(p, eps))
     plot_conv(p, estimates)
 

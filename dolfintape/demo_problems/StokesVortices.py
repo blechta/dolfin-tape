@@ -1,8 +1,7 @@
 from dolfin import *
 
-from common.deviatoric_space import TensorFunctionSpace, deviatoric
-from GeneralizedStokes import GeneralizedStokesProblem
-from exact_solutions import pStokes_vortices
+from dolfintape.demo_problems.GeneralizedStokes import GeneralizedStokesProblem
+from dolfintape.demo_problems.exact_solutions import pStokes_vortices
 
 __all__ = ['StokesVortices']
 

@@ -14,9 +14,8 @@ from dolfin import *
 import matplotlib.pyplot as plt
 import numpy as np
 
-from common import FluxReconstructor
-from common.cell_diameter import CellDiameters
-from problems.exact_solutions import pStokes_vortices
+from dolfintape import FluxReconstructor, CellDiameters
+from dolfintape.demo_problems import pStokes_vortices
 
 
 results = []
@@ -43,7 +42,7 @@ for N in [2**i for i in xrange(2, 7)]:
     solve(a == L, w, [bc_u, bc_p])
     u, p = w.split(deepcopy=True)
     pt = plot(u, title='u (%d x %d)' % (N, N))
-    pt.write_png('stokes_u_%d_%d' % (N, N))
+    pt.write_png('results/stokes_u_%d_%d' % (N, N))
 
     # Adjust presure to zero mean
     p.vector()[:] -= assemble(p*dx)/assemble(Constant(1.0)*dx(mesh))
@@ -60,7 +59,7 @@ for N in [2**i for i in xrange(2, 7)]:
     q = as_vector(q)
     for i in range(mesh.geometry().dim()):
         pt = plot(q[i], title='q[%d] (%d x %d)' % (i, N, N))
-        pt.write_png('stokes_q%d_%d_%d' % (i, N, N))
+        pt.write_png('results/stokes_q%d_%d_%d' % (i, N, N))
 
     # Cell size and inf-sup constant
     h = CellDiameters(mesh)

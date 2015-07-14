@@ -5,9 +5,9 @@ from mpi4py import MPI as MPI4py
 
 from itertools import chain
 
-from tensor_views import MatrixView, VectorView, assemble
-from utils import la_index_mpitype
-from hat_function import hat_function
+from dolfintape.tensor_views import MatrixView, VectorView, assemble
+from dolfintape.utils import la_index_mpitype
+from dolfintape.hat_function import hat_function
 
 __all__ = ['FluxReconstructor']
 

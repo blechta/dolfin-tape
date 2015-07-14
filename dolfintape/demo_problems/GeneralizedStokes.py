@@ -2,9 +2,9 @@ from dolfin import *
 import matplotlib.pyplot as plt
 import numpy as np
 
-from common import FluxReconstructor
-from common.deviatoric_space import TensorFunctionSpace, deviatoric
-from common.cell_diameter import CellDiameters
+from dolfintape import FluxReconstructor
+from dolfintape.deviatoric_space import TensorFunctionSpace, deviatoric
+from dolfintape.cell_diameter import CellDiameters
 
 
 class ImplicitStokesFluxReconstructor(FluxReconstructor):

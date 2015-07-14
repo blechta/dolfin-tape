@@ -25,6 +25,7 @@ import ufl
 ufl.set_level(ufl.INFO if MPI.rank(mpi_comm_world())==0 else ufl.INFO+1)
 
 
-from flux_reconstructor import FluxReconstructor
+from dolfintape.flux_reconstructor import FluxReconstructor
+from dolfintape.cell_diameter import CellDiameters
 
-__all__ = ['FluxReconstructor']
+__all__ = ['FluxReconstructor', 'CellDiameters']

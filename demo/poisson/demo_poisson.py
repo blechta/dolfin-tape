@@ -11,8 +11,7 @@ from dolfin import *
 import matplotlib.pyplot as plt
 import numpy as np
 
-from common import FluxReconstructor
-from common.cell_diameter import CellDiameters
+from dolfintape import FluxReconstructor, CellDiameters
 
 
 results = []
