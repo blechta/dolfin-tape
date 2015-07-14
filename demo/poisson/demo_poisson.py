@@ -75,7 +75,7 @@ plt.title('Error and its estimate')
 plt.xlabel(r'$1/h$')
 plt.ylabel(r'$||\nabla u-\nabla u_h||_2$')
 plt.loglog()
-plt.legend()
+plt.legend(loc=3)
 
 # Plot timing of flux reconstructions
 plt.subplot(2, 1, 2)
@@ -87,9 +87,10 @@ plt.title('Flux reconstructor timing')
 plt.xlabel('#DOFs')
 plt.ylabel('t [s]')
 plt.loglog()
-plt.legend()
+plt.legend(loc=4)
 
 plt.tight_layout()
+plt.savefig('results/convergence.pdf')
 plt.show(block=True)
 
 interactive()

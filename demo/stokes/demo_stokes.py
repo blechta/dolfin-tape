@@ -42,7 +42,8 @@ for N in [2**i for i in xrange(2, 7)]:
     w = Function(W)
     solve(a == L, w, [bc_u, bc_p])
     u, p = w.split(deepcopy=True)
-    plot(u, title='u (%d x %d)' % (N, N))
+    pt = plot(u, title='u (%d x %d)' % (N, N))
+    pt.write_png('stokes_u_%d_%d' % (N, N))
 
     # Adjust presure to zero mean
     p.vector()[:] -= assemble(p*dx)/assemble(Constant(1.0)*dx(mesh))
@@ -58,7 +59,8 @@ for N in [2**i for i in xrange(2, 7)]:
     info_green('Flux reconstruction timing: %g' % t_flux_reconstructor)
     q = as_vector(q)
     for i in range(mesh.geometry().dim()):
-        plot(q[i], title='q[%d] (%d x %d)' % (i, N, N))
+        pt = plot(q[i], title='q[%d] (%d x %d)' % (i, N, N))
+        pt.write_png('stokes_q%d_%d_%d' % (i, N, N))
 
     # Cell size and inf-sup constant
     h = CellDiameters(mesh)
@@ -98,7 +100,7 @@ plt.xlabel(r'$1/h$')
 plt.ylabel(r'$(||\mathbf{\nabla u-\nabla u}_h||_2^2'
            r'+\beta^2||p-p_h||_2^2)^{1/2}$')
 plt.loglog()
-plt.legend()
+plt.legend(loc=3)
 
 # Plot timing of flux reconstructions
 plt.subplot(2, 1, 2)
@@ -110,9 +112,10 @@ plt.title('Flux reconstructor timing')
 plt.xlabel('#DOFs')
 plt.ylabel('t [s]')
 plt.loglog()
-plt.legend()
+plt.legend(loc=4)
 
 plt.tight_layout()
+plt.savefig('results/convergence.pdf')
 plt.show(block=True)
 
 interactive()
