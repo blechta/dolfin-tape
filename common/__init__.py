@@ -1,3 +1,9 @@
+"""This is dolfin-tape, the DOLFIN tools for a posteriori error estimation."""
+
+__author__ = "Jan Blechta"
+__version__ = "1.6.0dev"
+__license__ = 'LGPL v3'
+
 # Avoid PETSc being initialized by DOLFIN, which sets some performance
 # degrading parameters since e91b4100. This assumes that this module
 # is imported before DOLFIN; otherwise the assertion may fail.
