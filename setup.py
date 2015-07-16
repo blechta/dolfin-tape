@@ -18,6 +18,7 @@ Environment :: Console
 Intended Audience :: Science/Research
 License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)
 Programming Language :: Python
+Programming Language :: C++
 Topic :: Scientific/Engineering :: Mathematics
 """
 classifiers = CLASSIFIERS.split('\n')[1:-1]
