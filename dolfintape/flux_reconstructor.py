@@ -54,7 +54,8 @@ class FluxReconstructor(object):
 
     def dp(self, p):
         """Return volume measure on patches of color p."""
-        return Measure("dx", subdomain_id=1, subdomain_data=self._cell_partitions[p])
+        return Measure("dx", domain=self._mesh, subdomain_id=1,
+                       subdomain_data=self._cell_partitions[p])
 
 
     def L(self, p, D, f):
