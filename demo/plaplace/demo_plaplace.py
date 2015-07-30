@@ -92,6 +92,8 @@ def plot_conv(p, errors):
               r'$||f+\mathrm{div}|\nabla u|^{p-2}\nabla u||_{-1,p}$')
     plt.xlabel(r'$\epsilon$')
     plt.loglog()
+    plt.legend(loc=4)
+    plt.savefig('results/convergence_p%g.pdf' % p)
 
 
 def run_demo(p, epsilons, zero_guess=False):
@@ -108,8 +110,6 @@ def run_demo(p, epsilons, zero_guess=False):
         plot(u, title='p-Laplace, p=%g, eps=%g'%(p, eps))
     plot_conv(p, estimates)
 
-    plt.legend(loc=4)
-    plt.savefig('results/convergence_p%g.pdf' % p)
     plt.show(block=True)
     interactive()
 
