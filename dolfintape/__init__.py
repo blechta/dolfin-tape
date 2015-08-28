@@ -47,5 +47,6 @@ del ufl, MPI, mpi_comm_world
 
 from dolfintape.flux_reconstructor import FluxReconstructor
 from dolfintape.cell_diameter import CellDiameters
+from dolfintape.mesh_diameter import mesh_diameter
 
-__all__ = ['FluxReconstructor', 'CellDiameters']
+__all__ = ['FluxReconstructor', 'CellDiameters', 'mesh_diameter']
