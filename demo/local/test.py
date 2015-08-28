@@ -2,9 +2,11 @@ from dolfin import *
 import ufl
 
 from dolfintape import FluxReconstructor, CellDiameters
+from dolfintape.poincare import poincare_friedrichs_cutoff
 
 #parameters['form_compiler']['representation'] = 'uflacs'
 
+#mesh = UnitSquareMesh(5, 5, 'crossed')
 mesh = UnitSquareMesh(10, 10, 'crossed')
 V = FunctionSpace(mesh, 'Lagrange', 1)
 f = Expression("1.+cos(2.*pi*x[0])*sin(2.*pi*x[1])", domain=mesh, degree=2)
@@ -44,7 +46,6 @@ def solve_p_laplace(p, eps, V, rhs, u0=None):
     else:
         assert isinstance(rhs, ufl.Form)
         assert len(rhs.arguments()) == 1
-        import pdb; pdb.set_trace()
         rhs = ufl.replace(rhs, {rhs.arguments()[0]: TestFunction(V)})
         L, f = rhs, None
 
@@ -52,7 +53,11 @@ def solve_p_laplace(p, eps, V, rhs, u0=None):
     E = 1./p*(eps + dot(grad(u), grad(u)))**(0.5*p)*dx - action(L, u)
     F = derivative(E, u)
     bc = DirichletBC(V, 0.0, lambda x, onb: onb)
-    solve(F == 0, u, bc)
+    solve(F == 0, u, bc,
+          solver_parameters={'newton_solver':
+                                {'maximum_iterations': 200,
+                                 'report': False}
+                            })
 
     # Skip error estimation if rhs is not integrable
     if not f:
@@ -92,60 +97,95 @@ def solve_p_laplace(p, eps, V, rhs, u0=None):
 
 def solve_problem(p, epsilons, zero_guess=False):
     p1 = p/(p-1) # Dual Lebesgue exponent
-    p = Constant(p)
 
     u = None
     for eps in epsilons:
         u = solve_p_laplace(p, eps, V, f, None if zero_guess else u)[0]
 
     # Define residal form
-    E = 1./p*(eps + dot(grad(u), grad(u)))**(0.5*p)*dx - f*u*dx
+    eps = Constant(0.0)
+    E = ( 1./Constant(p)*(eps + dot(grad(u), grad(u)))**(0.5*Constant(p)) - f*u ) * dx
     R = derivative(E, u)
 
-    # global lifting of residual
+    # Global lifting of residual
     V_high = FunctionSpace(mesh, 'Lagrange', 4)
     r_glob = None
-    for eps in epsilons[:4]:
-        parameters['form_compiler']['quadrature_degree'] = 4
+    for eps in epsilons[:6]:
+        parameters['form_compiler']['quadrature_degree'] = 8
         r_glob = solve_p_laplace(p, eps, V_high, R)[0]
         parameters['form_compiler']['quadrature_degree'] = -1
         plot(r_glob)
         r_norm_glob = sobolev_norm(r_glob, p)**(p/p1)
         info("||r|| = %g" % r_norm_glob)
-    interactive()
+    #interactive()
 
-    # local lifting of residual
+    # Local lifting of residual
     r_norm_loc = 0.0
     cf = CellFunction('size_t', mesh)
     r_loc = Function(V)
     r_loc_temp = Function(V)
+
+    # Adjust verbosity
+    old_log_level = get_log_level()
+    set_log_level(WARNING)
+    prg = Progress('Solving local liftings on patches', mesh.num_vertices())
+
     for v in vertices(mesh):
         cf.set_all(0)
         for c in cells(v):
             cf[c] = 1
         submesh = SubMesh(mesh, cf, 1)
         V_loc = FunctionSpace(submesh, 'Lagrange', 4)
-        E = ( 1./p*(eps + dot(grad(u), grad(u)))**(0.5*p) - f*u ) * dx(submesh)
+        eps = Constant(0.0)
+        E = ( 1./Constant(p)*(eps + dot(grad(u), grad(u)))**(0.5*Constant(p)) - f*u ) * dx(submesh)
         R = derivative(E, u, TestFunction(V_loc))
-        for eps in epsilons[:4]:
-            parameters['form_compiler']['quadrature_degree'] = 4
+        for eps in epsilons[:6]:
+            #parameters['form_compiler']['quadrature_degree'] = 4
+            parameters['form_compiler']['quadrature_degree'] = 8
             r = solve_p_laplace(p, eps, V_loc, R)[0]
             parameters['form_compiler']['quadrature_degree'] = -1
             #plot(r)
         r_norm_loc += sobolev_norm(r, p)**p
+        # FIXME: Extrapolating instead of extending by zero?!
         r.set_allow_extrapolation(True)
         r_loc_temp.interpolate(r)
         r_loc_vec = r_loc.vector()
         r_loc_vec += r_loc_temp.vector()
+
+        # Advance progress bar
+        # TODO: This is possibly very slow!
+        set_log_level(PROGRESS)
+        prg += 1
+        set_log_level(WARNING)
+
+    # Recover original verbosity
+    set_log_level(old_log_level)
+
     r_norm_loc **= 1.0/p1
     plot(r_loc)
 
-    info("||r|| = %g, \sum_a ||r_a|| = %g" % (r_norm_glob, r_norm_loc))
+    info(r"||\nabla r||_p^(p-1) = %g, ( \sum_a ||\nabla r_a||_p^p )^(1/q) = %g"
+            % (r_norm_glob, r_norm_loc))
+
+    N = mesh.topology().dim() + 1 # vertices per cell
+    C_PF = poincare_friedrichs_cutoff(mesh, p)
+    ratio_a = r_norm_glob / ( N**(1.0/p) * C_PF * r_norm_loc )
+    ratio_b = r_norm_loc / ( N**(1.0/p1) * r_norm_glob )
+    info_blue("C_{cont,PF} = %g" %  C_PF)
+    if ratio_a <= 1.0:
+        info_green("(3.7a) ok: lhs/rhs = %g <= 1" % ratio_a)
+    else:
+        info_red("(3.7a) bad: lhs/rhs = %g > 1" % ratio_a)
+    if ratio_b <= 1.0:
+        info_green("(3.7b) ok: lhs/rhs = %g <= 1" % ratio_b)
+    else:
+        info_red("(3.7b) bad: lhs/rhs = %g > 1" % ratio_b)
+
     interactive()
 
 def sobolev_norm(u, p):
     p = Constant(p) if p is not 2 else p
-    return assemble(inner(grad(u), grad(u))**(p/2)*dx)**(1.0/p)
+    return assemble(inner(grad(u), grad(u))**(p/2)*dx)**(1.0/float(p))
 
 
 if __name__ == '__main__':
