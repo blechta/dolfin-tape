@@ -15,9 +15,10 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with dolfin-tape. If not, see <http://www.gnu.org/licenses/>.
 
-from dolfin import Expression, cpp, FiniteElement, jit
+from dolfin import Expression, cpp, FiniteElement, jit, \
+        vertices, facets, Vertex
 
-__all__ = ['hat_function']
+__all__ = ['hat_function', 'hat_function_grad']
 
 
 def hat_function(vertex_colors, color, element=None):
@@ -73,3 +74,32 @@ public:
   }
 };
 """
+
+
+def hat_function_grad(vertex, cell):
+    """Compute L^\infty-norm of gradient of hat function on 'cell'
+    and value 1 in 'vertex'."""
+    # TODO: fix using ghosted mesh
+    not_working_in_parallel("function 'hat_function_grad'")
+
+    assert vertex in vertices(cell), "vertex not in cell!"
+
+    # Find adjacent facet
+    f = [f for f in facets(cell) if not vertex in vertices(f)]
+    assert len(f) == 1, "Something strange with adjacent cell!"
+    f = f[0]
+
+    # Get unit normal
+    n = f.normal()
+    n /= n.norm()
+
+    # Pick some vertex on facet
+    # FIXME: Is it correct index in parallel?
+    facet_vertex_0 = Vertex(cell.mesh(), f.entities(0)[0])
+
+    # Compute signed distance from vertex to facet plane
+    d = (facet_vertex_0.point() - vertex.point()).dot(n)
+
+    # Return norm of gradient
+    assert d != 0.0, "Degenerate cell!"
+    return 1.0/abs(d)
