@@ -16,7 +16,7 @@
 # along with dolfin-tape. If not, see <http://www.gnu.org/licenses/>.
 
 from dolfin import Mesh, Cell, Vertex, cells, facets, edges, vertices, \
-        warning, pi
+        warning, pi, not_working_in_parallel
 
 from dolfintape.hat_function import hat_function_grad
 

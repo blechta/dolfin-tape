@@ -16,7 +16,7 @@
 # along with dolfin-tape. If not, see <http://www.gnu.org/licenses/>.
 
 from dolfin import Expression, cpp, FiniteElement, jit, \
-        vertices, facets, Vertex
+        vertices, facets, Vertex, not_working_in_parallel
 
 __all__ = ['hat_function', 'hat_function_grad']
 
