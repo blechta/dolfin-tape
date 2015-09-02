@@ -15,10 +15,44 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with dolfin-tape. If not, see <http://www.gnu.org/licenses/>.
 
-from sympy import Symbol, symbols, sin, pi, Matrix, diff, integrate
+from sympy import Symbol, symbols, sin, pi, Matrix, diff, integrate, S
 from sympy import ccode as sympy_ccode
+from sympy.mpmath import norm
+from dolfin import Expression
 
-__all__ = ["pStokes_vortices"]
+__all__ = ["pLaplace_modes", "pStokes_vortices"]
+
+
+ccode = lambda *args, **kwargs: sympy_ccode(*args, **kwargs).replace('M_PI', 'pi')
+
+
+def pLaplace_modes(*args, **kwargs):
+    """Returns 2-tuple of DOLFIN Expressions initialized with *args and
+    **kwargs passed in and solving zero BC p-Laplace problem on unit square
+    as soulution and corresponding right-hand side.
+
+    Mandatory kwargs:
+      kwargs['p'] > 1.0    ... Lebesgue exponent
+      kwargs['eps'] >= 0.0 ... amount of regularization
+      kwargs['n'] uint     ... x-mode
+      kwargs['m'] uint     ... y-mode
+    """
+    p = Symbol('p', positive=True, constant=True)
+    eps = Symbol('eps', nonnegative=True, constant=True)
+    n = Symbol('n', integer=True, positive=True, constant=True)
+    m = Symbol('m', integer=True, positive=True, constant=True)
+    x = symbols('x[0] x[1]', real=True)
+    dim = len(x)
+    u = sin(n*pi*x[0])*sin(m*pi*x[1])
+    Du = Matrix([diff(u, x[j]) for j in xrange(dim)])
+    q = (eps + Du.norm(2)**(S(1)/2))**(p/2-1) * Du
+    f = -sum(diff(q[j], x[j]) for j in xrange(dim))
+
+    u_code = ccode(u)
+    # Prevent division by zero
+    f_code = "x[0]*x[0] + x[1]*x[1] < 1e-308 ? 0.0 : \n" + ccode(f)
+    return [Expression(u_code, *args, **kwargs),
+            Expression(f_code, *args, **kwargs)]
 
 
 def pStokes_vortices(*args, **kwargs):
@@ -33,7 +67,6 @@ def pStokes_vortices(*args, **kwargs):
     Optional kwargs:
       kwargs['r'] > 1.0    ... power-law exponent, default 2
     """
-    from dolfin import Expression
     if kwargs.get('r', 2) == 2:
         codes = _pStokes_vortices_ccode(r=2)
     else:
@@ -61,8 +94,6 @@ def _pStokes_vortices_ccode(r=None):
     divS = tuple(sum(diff(S[i, j], x[j]) for j in xrange(dim)) for i in xrange(dim))
     gradp = tuple(diff(p, x[i]) for i in xrange(dim))
     f = tuple(gradp[i] - divS[i] for i in xrange(dim))
-
-    ccode = lambda *args, **kwargs: sympy_ccode(*args, **kwargs).replace('M_PI', 'pi')
 
     p_code = ccode(p)
     u_code = tuple(ccode(u[i]) for i in xrange(dim))
