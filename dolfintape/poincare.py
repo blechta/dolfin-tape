@@ -32,13 +32,13 @@ def poincare_const(o, p):
         #        or isinstance(o, TetrahedronCell), "Poincare constant not " \
         #        "implemented on non-simplicial cells!"
         d = max(e.length() for e in edges(o))
-        return d*_poincare_simplex(p)
+        return d*_poincare_convex(p)
 
     if isinstance(o, type) and issubclass(o, Cell):
         #assert issubclass(o, IntervalCell) or issubclass(o, TriangleCell) \
         #        or issubclass(o, TetrahedronCell), "Poincare constant not " \
         #        "implemented on non-simplicial cells!"
-        return _poincare_simplex(p)
+        return _poincare_convex(p)
 
     if isinstance(o, Vertex):
         # TODO: fix using ghosted mesh
@@ -46,9 +46,9 @@ def poincare_const(o, p):
         d = max(v0.point().distance(v1.point())
                 for c0 in cells(o) for v0 in vertices(c0)
                 for c1 in cells(o) for v1 in vertices(c1))
-        # FIXME: Implement a check for simpliciality of the patch
-        warning("Assuming simplicial patch for computation of Poincare const!")
-        return d*_poincare_simplex(p)
+        # FIXME: Implement a check for convexity of the patch
+        warning("Assuming convex patch for computation of Poincare const!")
+        return d*_poincare_convex(p)
 
     raise NotImplementedError
 
@@ -85,7 +85,7 @@ def poincare_friedrichs_cutoff(o, p):
     raise NotImplementedError
 
 
-def _poincare_simplex(p):
+def _poincare_convex(p):
     if p==1.0:
         # [Acosta, Duran 2003]
         return 0.5
