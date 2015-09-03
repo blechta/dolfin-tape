@@ -24,7 +24,7 @@ from itertools import chain
 
 from dolfintape.tensor_views import MatrixView, VectorView, assemble
 from dolfintape.utils import la_index_mpitype
-from dolfintape.hat_function import hat_function
+from dolfintape.hat_function import hat_function_collection
 
 __all__ = ['FluxReconstructor']
 
@@ -49,7 +49,8 @@ class FluxReconstructor(object):
         self._setup_solver()
 
         # Prepare hat functions
-        self._hat = [hat_function(vertex_colors, p) for p in xrange(color_num)]
+        self._hat = [hat_function_collection(vertex_colors, p)
+                     for p in xrange(color_num)]
 
 
     def dp(self, p):
