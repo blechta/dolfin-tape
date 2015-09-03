@@ -1,13 +1,46 @@
+# Copyright (C) 2015 Jan Blechta
+#
+# This file is part of dolfin-tape.
+#
+# dolfin-tape is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# dolfin-tape is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with dolfin-tape. If not, see <http://www.gnu.org/licenses/>.
+
+"""This script finds an approximation of p-Laplace problem and then uses
+its residual in W^{-1,q} to demonstrate localization result of
+
+    [J. Blechta, J. M\'alek, M. Vohral\'ik, Localization of $W^{-1,q}$
+    norm for local a posteriori efficiency, in preparation, 2016.]
+"""
+
 from dolfin import *
+import mshr
 import ufl
 
 from dolfintape import FluxReconstructor, CellDiameters
 from dolfintape.poincare import poincare_friedrichs_cutoff
+from dolfintape.mesh_fixup import mesh_fixup
 
+
+# UFLACS issue #49
 #parameters['form_compiler']['representation'] = 'uflacs'
 
-#mesh = UnitSquareMesh(5, 5, 'crossed')
-mesh = UnitSquareMesh(10, 10, 'crossed')
+# Prepare L-shaped mesh
+b0 = mshr.Rectangle(Point(0.0, 0.0), Point(0.5, 1.0))
+b1 = mshr.Rectangle(Point(0.0, 0.0), Point(1.0, 0.5))
+mesh = mshr.generate_mesh(b0 + b1, 80)
+mesh = mesh_fixup(mesh)
+
+# Prepare common space and rhs
 V = FunctionSpace(mesh, 'Lagrange', 1)
 f = Expression("1.+cos(2.*pi*x[0])*sin(2.*pi*x[1])", domain=mesh, degree=2)
 
