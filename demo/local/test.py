@@ -23,26 +23,10 @@ its residual in W^{-1,q} to demonstrate localization result of
 """
 
 from dolfin import *
-import mshr
 import ufl
 
 from dolfintape import FluxReconstructor, CellDiameters
 from dolfintape.poincare import poincare_friedrichs_cutoff
-from dolfintape.mesh_fixup import mesh_fixup
-
-
-# UFLACS issue #49
-#parameters['form_compiler']['representation'] = 'uflacs'
-
-# Prepare L-shaped mesh
-b0 = mshr.Rectangle(Point(0.0, 0.0), Point(0.5, 1.0))
-b1 = mshr.Rectangle(Point(0.0, 0.0), Point(1.0, 0.5))
-mesh = mshr.generate_mesh(b0 + b1, 80)
-mesh = mesh_fixup(mesh)
-
-# Prepare common space and rhs
-V = FunctionSpace(mesh, 'Lagrange', 1)
-f = Expression("1.+cos(2.*pi*x[0])*sin(2.*pi*x[1])", domain=mesh, degree=2)
 
 
 class ReconstructorCache(dict):
@@ -60,7 +44,7 @@ class ReconstructorCache(dict):
 reconstructor_cache = ReconstructorCache()
 
 
-def solve_p_laplace(p, eps, V, rhs, u0=None):
+def solve_p_laplace(p, eps, V, rhs, u0=None, exact_solution=None):
     p1 = p/(p-1)
     p = Constant(p)
     p1 = Constant(p1)
@@ -88,13 +72,13 @@ def solve_p_laplace(p, eps, V, rhs, u0=None):
     bc = DirichletBC(V, 0.0, lambda x, onb: onb)
     solve(F == 0, u, bc,
           solver_parameters={'newton_solver':
-                                {'maximum_iterations': 200,
+                                {'maximum_iterations': 500,
                                  'report': False}
                             })
 
     # Skip error estimation if rhs is not integrable
     if not f:
-        return u, None, None, None
+        return u, None, None, None, None
 
     # Reconstruct flux q in H^p1(div) s.t.
     #       q ~ -S
@@ -122,18 +106,27 @@ def solve_p_laplace(p, eps, V, rhs, u0=None):
     Est_h   = MPI.sum( mesh.mpi_comm(), (est_h  **p1).sum() )**(1.0/p1)
     Est_eps = MPI.sum( mesh.mpi_comm(), (est_eps**p1).sum() )**(1.0/p1)
     Est_tot = MPI.sum( mesh.mpi_comm(), (est_tot**p1).sum() )**(1.0/p1)
-    info_red('Error estimates: overall %g, discretization %g, regularization %g'
-             % (Est_tot, Est_h, Est_eps))
+    info_blue('Error estimates: overall %g, discretization %g, regularization %g'
+              % (Est_tot, Est_h, Est_eps))
 
-    return u, Est_h, Est_eps, Est_tot
+    if exact_solution:
+        S_exact = ufl.replace(S, {u: exact_solution})
+        Est_up = sobolev_norm(S-S_exact, p1)
+        info_blue('||R|| <= %g', Est_up)
+    else:
+        Est_up = None
+
+    return u, Est_h, Est_eps, Est_tot, Est_up
 
 
-def solve_problem(p, epsilons, zero_guess=False):
+def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
     p1 = p/(p-1) # Dual Lebesgue exponent
+    V = FunctionSpace(mesh, 'Lagrange', 1)
 
     u = None
     for eps in epsilons:
-        u = solve_p_laplace(p, eps, V, f, None if zero_guess else u)[0]
+        u = solve_p_laplace(p, eps, V, f, None if zero_guess else u,
+                            exact_solution)[0]
 
     # Define residal form
     eps = Constant(0.0)
@@ -145,18 +138,30 @@ def solve_problem(p, epsilons, zero_guess=False):
     r_glob = None
     for eps in epsilons[:6]:
         parameters['form_compiler']['quadrature_degree'] = 8
-        r_glob = solve_p_laplace(p, eps, V_high, R)[0]
+        r_glob = solve_p_laplace(p, eps, V_high, R,
+                                 None if zero_guess else r_glob)[0]
         parameters['form_compiler']['quadrature_degree'] = -1
         plot(r_glob)
         r_norm_glob = sobolev_norm(r_glob, p)**(p/p1)
-        info("||r|| = %g" % r_norm_glob)
+        info_blue("||r|| = %g" % r_norm_glob)
+
+    # Lower estimate on ||R|| using exact solution
+    if exact_solution:
+        # FIXME: Possible cancellation due to underintegrating?!
+        r_norm_glob_low = assemble(action(R, u)-action(R, exact_solution)) \
+                / sobolev_norm(u - exact_solution, p)
+        info_blue("||R|| >= %g" % r_norm_glob_low)
+
     #interactive()
 
     # Local lifting of residual
     r_norm_loc = 0.0
     cf = CellFunction('size_t', mesh)
-    r_loc = Function(V)
-    r_loc_temp = Function(V)
+    #r_loc = Function(V)
+    #r_loc_temp = Function(V)
+    P4 = FunctionSpace(mesh, 'Lagrange', 4)
+    r_loc = Function(P4)
+    r_loc_temp = Function(P4)
 
     # Adjust verbosity
     old_log_level = get_log_level()
@@ -179,14 +184,25 @@ def solve_problem(p, epsilons, zero_guess=False):
             parameters['form_compiler']['quadrature_degree'] = -1
             #plot(r)
         r_norm_loc += sobolev_norm(r, p)**p
-        # FIXME: Extrapolating instead of extending by zero?!
-        r.set_allow_extrapolation(True)
+        r = Extension(r, domain=mesh, element=r.ufl_element())
         r_loc_temp.interpolate(r)
-        r_loc_vec = r_loc.vector()
-        r_loc_vec += r_loc_temp.vector()
+        #project(r, V=r_loc_temp.function_space(), function=r_loc_temp, solver_type='lu')
+        r_loc.vector()[:] += r_loc_temp.vector()
+        #plot(r, title='r_a')
+        #plot(r, mesh=submesh, title='r_a')
+        #plot(r, mesh=mesh, title='r_a')
+        #plot(r_loc_temp, title='r_a')
+        #plot(r_loc, title='\sum_a r_a')
+        #interactive()
+
+        # Lower estimate on ||R||_a using exact solution
+        if exact_solution:
+            hat = hat_function(v)
+            r_norm_loc_low = assemble(action(R, hat*u)-action(R, hat*exact_solution)) \
+                    / sobolev_norm(hat*(u - exact_solution), p)
+            info_blue("||R||_a >= %g" % r_norm_loc_low)
 
         # Advance progress bar
-        # TODO: This is possibly very slow!
         set_log_level(PROGRESS)
         prg += 1
         set_log_level(WARNING)
@@ -197,8 +213,8 @@ def solve_problem(p, epsilons, zero_guess=False):
     r_norm_loc **= 1.0/p1
     plot(r_loc)
 
-    info(r"||\nabla r||_p^(p-1) = %g, ( \sum_a ||\nabla r_a||_p^p )^(1/q) = %g"
-            % (r_norm_glob, r_norm_loc))
+    info_blue(r"||\nabla r||_p^(p-1) = %g, ( \sum_a ||\nabla r_a||_p^p )^(1/q) = %g"
+              % (r_norm_glob, r_norm_loc))
 
     N = mesh.topology().dim() + 1 # vertices per cell
     C_PF = poincare_friedrichs_cutoff(mesh, p)
@@ -216,16 +232,62 @@ def solve_problem(p, epsilons, zero_guess=False):
 
     interactive()
 
+
 def sobolev_norm(u, p):
     p = Constant(p) if p is not 2 else p
     return assemble(inner(grad(u), grad(u))**(p/2)*dx)**(1.0/float(p))
 
 
+class Extension(Expression):
+    def __init__(self, u, **kwargs):
+        self._u = u
+        assert 'domain' in kwargs and 'element' in kwargs
+    def eval(self, values, x):
+        try:
+            self._u.eval(values, x)
+        except RuntimeError:
+            values[:] = 0.0
+        else:
+            assert not self._u.get_allow_extrapolation()
+
+
 if __name__ == '__main__':
     import numpy as np
+    from dolfintape.demo_problems.exact_solutions import pLaplace_modes
+    from dolfintape.mesh_fixup import mesh_fixup
+    import mshr
 
-    # p = 11.0
-    solve_problem(11.0, [10.0**i for i in np.arange(1.0,  -6.0, -0.5)])
+    # UFLACS issue #49
+    #parameters['form_compiler']['representation'] = 'uflacs'
 
-    # p = 1.1; works better with zero guess
-    solve_problem( 1.1, [10.0**i for i in np.arange(0.0, -22.0, -2.0)], zero_guess=True)
+    # -------------------------------------------------------------------------
+    # Tests on unit square
+    # -------------------------------------------------------------------------
+    mesh = UnitSquareMesh(5, 5, 'crossed')
+    #mesh = UnitSquareMesh(10, 10, 'crossed')
+    #mesh = mesh_fixup(mesh)
+
+    #u, f = pLaplace_modes(p=11.0, eps=0.0, m=1, n=1, domain=mesh, degree=4)
+    #solve_problem(11.0, [10.0**i for i in np.arange(1.0,  -6.0, -0.5)], mesh, f, u)
+    #u, f = pLaplace_modes(p=1.35, eps=0.0, m=1, n=1, domain=mesh, degree=4)
+    #solve_problem( 1.35, [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f, u)
+    #u, f = pLaplace_modes(p=1.1, eps=0.0, m=1, n=1, domain=mesh, degree=4)
+    #solve_problem( 1.1,  [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f, u, zero_guess=True)
+    # -------------------------------------------------------------------------
+
+    # -------------------------------------------------------------------------
+    # Tests on L-shaped domain
+    # -------------------------------------------------------------------------
+    b0 = mshr.Rectangle(Point(0.0, 0.0), Point(0.5, 1.0))
+    b1 = mshr.Rectangle(Point(0.0, 0.0), Point(1.0, 0.5))
+    mesh = mshr.generate_mesh(b0 + b1, 10)
+    mesh = mesh_fixup(mesh)
+
+    f = Expression("1.+cos(2.*pi*x[0])*sin(2.*pi*x[1])", domain=mesh, degree=2)
+
+    #solve_problem(11.0,  [10.0**i for i in np.arange(1.0,  -6.0, -0.5)], mesh, f)
+    solve_problem( 1.35, [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f)
+    #solve_problem( 1.1,  [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f, zero_guess=True)
+    # -------------------------------------------------------------------------
+
+    list_timings(TimingClear_keep, [TimingType_wall])
