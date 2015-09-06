@@ -15,9 +15,8 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with dolfin-tape. If not, see <http://www.gnu.org/licenses/>.
 
-from sympy import Symbol, symbols, sin, pi, Matrix, diff, integrate, S
+from sympy import Symbol, symbols, sin, pi, Matrix, diff, integrate
 from sympy import ccode as sympy_ccode
-from sympy.mpmath import norm
 from dolfin import Expression
 
 __all__ = ["pLaplace_modes", "pStokes_vortices"]
@@ -29,7 +28,7 @@ ccode = lambda *args, **kwargs: sympy_ccode(*args, **kwargs).replace('M_PI', 'pi
 def pLaplace_modes(*args, **kwargs):
     """Returns 2-tuple of DOLFIN Expressions initialized with *args and
     **kwargs passed in and solving zero BC p-Laplace problem on unit square
-    as soulution and corresponding right-hand side.
+    as solution and corresponding right-hand side.
 
     Mandatory kwargs:
       kwargs['p'] > 1.0    ... Lebesgue exponent
@@ -45,7 +44,7 @@ def pLaplace_modes(*args, **kwargs):
     dim = len(x)
     u = sin(n*pi*x[0])*sin(m*pi*x[1])
     Du = Matrix([diff(u, x[j]) for j in xrange(dim)])
-    q = (eps + Du.norm(2)**(S(1)/2))**(p/2-1) * Du
+    q = (eps + Du.norm(2)**2)**(p/2-1) * Du
     f = -sum(diff(q[j], x[j]) for j in xrange(dim))
 
     u_code = ccode(u)
