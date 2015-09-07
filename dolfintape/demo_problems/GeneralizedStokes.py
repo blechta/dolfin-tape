@@ -231,7 +231,7 @@ class GeneralizedStokesProblem(object):
         # Grab approximate solution and rhs
         u_h, p_h, s_h = self._w.split()
         s_h = deviatoric(s_h)
-        I = Identity(s_h.shape()[0])
+        I = Identity(s_h.ufl_shape[0])
         f = self.f
 
         # Grab constitutive parameters
