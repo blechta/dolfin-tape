@@ -20,31 +20,45 @@ from dolfin import *
 from dolfintape.demo_problems.GeneralizedStokes import GeneralizedStokesProblem
 from dolfintape.demo_problems.exact_solutions import pStokes_vortices
 
-__all__ = ['StokesVortices']
+__all__ = ['PowerLawVortices']
 
 
-class NewtonianFluid(object):
-    def __init__(self, mu):
+class PowerLawFluid(object):
+    def __init__(self, mu, r):
         self._mu = mu
+        self._r = r
 
     def r(self):
-        return 2
+        return self._r
 
     def mu(self):
         return self._mu
 
     def g(self):
-        return lambda s, d: Constant(1.0/(2.0*self._mu))*s - d
+        r, mu = self._r, self._mu
+        return lambda s, d: (
+          Constant((2.0*mu)**(-1.0/(r-1.0)))
+            * inner(s, s)**Constant(-0.5*(r-2.0)/(r-1.0)) * s
+          - d
+        )
+
+    def g_regularized(self):
+        r, mu = self._r, self._mu
+        return lambda s, d, eps: (
+          Constant((2.0*mu)**(-1.0/(r-1.0)))
+            * (Constant(eps) + inner(s, s))**Constant(-0.5*(r-2.0)/(r-1.0)) * s
+          - d
+        )
 
 
-class StokesVortices(GeneralizedStokesProblem):
+class PowerLawVortices(GeneralizedStokesProblem):
     n = 4 # Number of vortices
     mu = 1.0
 
-    def __init__(self, N):
+    def __init__(self, N, r):
         mesh = UnitSquareMesh(N, N, "crossed")
-        constitutive_law = NewtonianFluid(self.mu)
+        constitutive_law = PowerLawFluid(self.mu, r)
         self.u_ex, self.p_ex, self.s_ex, self.f = \
-            pStokes_vortices(n=self.n, mu=self.mu, r=2, eps=0.0,
-                             degree=6, domain=mesh)
+            pStokes_vortices(n=self.n, mu=self.mu, r=r, eps=0.0,
+                             degree=2, domain=mesh)
         GeneralizedStokesProblem.__init__(self, mesh, constitutive_law, self.f)
