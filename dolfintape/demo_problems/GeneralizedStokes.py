@@ -61,6 +61,7 @@ class GeneralizedStokesProblem(object):
         Q = FunctionSpace(mesh, 'CG', 1)
         S = TensorFunctionSpace(mesh, 'DG', 1, symmetry=True, zero_trace=True)
         W = MixedFunctionSpace([V, Q, S])
+        info_blue('Number DOFs: %d' % W.dim())
 
         w = Function(W)
         (u, p, s) = split(w)

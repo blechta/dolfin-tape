@@ -118,4 +118,4 @@ if dolfin.MPI.rank(dolfin.mpi_comm_world()) == 0:
 
 dolfin.interactive()
 
-dolfin.list_timings(TimingClear_keep, [TimingType_wall])
+dolfin.list_timings(dolfin.TimingClear_keep, [dolfin.TimingType_wall])
