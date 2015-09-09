@@ -94,9 +94,10 @@ def _pStokes_vortices_ccode(r=None):
     gradp = tuple(diff(p, x[i]) for i in xrange(dim))
     f = tuple(gradp[i] - divS[i] for i in xrange(dim))
 
+    div_guard = "x[0]*x[0] + x[1]*x[1] < 1e-308 ? 0.0 : \n"
     p_code = ccode(p)
     u_code = tuple(ccode(u[i]) for i in xrange(dim))
-    f_code = tuple(ccode(f[i]) for i in xrange(dim))
+    f_code = tuple(div_guard + ccode(f[i]) for i in xrange(dim))
     S_code = tuple(tuple(ccode(S[i, j]) for j in xrange(dim)) for i in xrange(dim))
 
     return u_code, p_code, S_code, f_code
