@@ -24,7 +24,7 @@ def CellDiameters(mesh):
     """Returns piece-wise constant Expression defined as cell diameter,
     i.e. maximum edge length for simplices."""
     element = FiniteElement('Discontinuous Lagrange', mesh.ufl_cell(), 0)
-    e = Expression(cell_diameters_cpp_code, element=element)
+    e = Expression(cell_diameters_cpp_code, element=element, domain=mesh)
     return e
 
 

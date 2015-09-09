@@ -35,6 +35,9 @@ import numpy as np
 from dolfintape.demo_problems import StokesVortices, PowerLawVortices
 
 
+# UFLACS form compiler performs much better for complex forms
+dolfin.parameters['form_compiler']['representation'] = 'uflacs'
+
 # Reduce pivotting of LU solver
 dolfin.PETScOptions.set('mat_mumps_cntl_1', 0.001)
 
@@ -114,3 +117,5 @@ if dolfin.MPI.rank(dolfin.mpi_comm_world()) == 0:
     plt.show()
 
 dolfin.interactive()
+
+dolfin.list_timings(TimingClear_keep, [TimingType_wall])

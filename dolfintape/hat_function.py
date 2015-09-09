@@ -40,7 +40,7 @@ def hat_function_collection(vertex_colors, color, element=None):
     ufc_element, ufc_dofmap = jit(element, mpi_comm=mesh.mpi_comm())
     dolfin_element = cpp.FiniteElement(ufc_element)
 
-    e = Expression(hats_cpp_code, element=element)
+    e = Expression(hats_cpp_code, element=element, domain=mesh)
     e.vertex_colors = vertex_colors
     e.color = color
     e.dolfin_element = dolfin_element
@@ -88,7 +88,7 @@ def hat_function(vertex):
     ufc_element, ufc_dofmap = jit(element, mpi_comm=mesh.mpi_comm())
     dolfin_element = cpp.FiniteElement(ufc_element)
 
-    e = Expression(hat_cpp_code, element=element)
+    e = Expression(hat_cpp_code, element=element, domain=mesh)
     e.vertex = vertex
     e.dolfin_element = dolfin_element
 
