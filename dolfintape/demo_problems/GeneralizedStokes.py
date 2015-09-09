@@ -74,13 +74,10 @@ class GeneralizedStokesProblem(object):
 
         F = lambda eps: ( inner(s, grad(v)) - p*div(v) - q*div(u)
                         + inner(g(s, d, eps), t) - inner(f, v) )*dx
-
-        bc_u = DirichletBC(W.sub(0), (0.0, 0.0), "on_boundary")
-        bc_p = DirichletBC(W.sub(1), 0.0, "near(x[0], 0.0) && near(x[1], 0.0)",
-                           method="pointwise")
+        bcs = self.bcs(W)
 
         self._F = F
-        self._bcs = [bc_u, bc_p]
+        self._bcs = bcs
         self._w = w
         self._constitutive_law = constitutive_law
         self._f = f
@@ -97,6 +94,7 @@ class GeneralizedStokesProblem(object):
         while True:
             w = self.solve()
             if self.criterion_eps():
+                info_blue('Regularization loop converged with eps = %g' % self._eps)
                 break
         return w
 

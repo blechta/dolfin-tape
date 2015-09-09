@@ -49,3 +49,10 @@ class StokesVortices(GeneralizedStokesProblem):
                              degree=6, domain=mesh)
         GeneralizedStokesProblem.__init__(self, mesh, constitutive_law,
                                           self.f, 0.0)
+
+
+    def bcs(self, W):
+        bc_u = DirichletBC(W.sub(0), (0.0, 0.0), "on_boundary")
+        bc_p = DirichletBC(W.sub(1), 0.0, "near(x[0], 0.0) && near(x[1], 0.0)",
+                           method="pointwise")
+        return [bc_u, bc_p]
