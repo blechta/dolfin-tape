@@ -51,12 +51,13 @@ f_Low_1 = dolfin.XDMFFile(comm, prefix+'/Low_1.xdmf')
 f_Upp_1 = dolfin.XDMFFile(comm, prefix+'/Upp_1.xdmf')
 
 for N in mesh_resolutions:
-    problem = StokesVortices(N)
-    #problem = PowerLawVortices(N, 2.5)
+    #problem = StokesVortices(N)
+    problem = PowerLawVortices(N, 2.5, 1.0)
 
-    u = problem.solve().split()[0]
+    u = problem.solve_adaptive_eps().split()[0]
     err_1 = problem.compute_errors()[:1]
-    est_1, est_2, est_3, Est_1, Est_2, Est_3 = problem.estimate_errors()
+    est_1, est_2, est_3, Est_1, Est_2, Est_3 = \
+            problem.estimate_errors_overall()
     low_1, upp_1, Low_1, Upp_1 = problem.compute_exact_bounds(problem.u_ex,
                       problem.p_ex, problem.s_ex)
 

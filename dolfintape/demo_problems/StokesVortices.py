@@ -34,7 +34,7 @@ class NewtonianFluid(object):
         return self._mu
 
     def g(self):
-        return lambda s, d: Constant(1.0/(2.0*self._mu))*s - d
+        return lambda s, d, eps: Constant(1.0/(2.0*self._mu))*s - d
 
 
 class StokesVortices(GeneralizedStokesProblem):
@@ -47,4 +47,5 @@ class StokesVortices(GeneralizedStokesProblem):
         self.u_ex, self.p_ex, self.s_ex, self.f = \
             pStokes_vortices(n=self.n, mu=self.mu, r=2, eps=0.0,
                              degree=6, domain=mesh)
-        GeneralizedStokesProblem.__init__(self, mesh, constitutive_law, self.f)
+        GeneralizedStokesProblem.__init__(self, mesh, constitutive_law,
+                                          self.f, 0.0)

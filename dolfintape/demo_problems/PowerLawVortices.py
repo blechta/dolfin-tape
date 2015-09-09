@@ -36,14 +36,6 @@ class PowerLawFluid(object):
 
     def g(self):
         r, mu = self._r, self._mu
-        return lambda s, d: (
-          Constant((2.0*mu)**(-1.0/(r-1.0)))
-            * inner(s, s)**Constant(-0.5*(r-2.0)/(r-1.0)) * s
-          - d
-        )
-
-    def g_regularized(self):
-        r, mu = self._r, self._mu
         return lambda s, d, eps: (
           Constant((2.0*mu)**(-1.0/(r-1.0)))
             * (Constant(eps) + inner(s, s))**Constant(-0.5*(r-2.0)/(r-1.0)) * s
@@ -52,13 +44,14 @@ class PowerLawFluid(object):
 
 
 class PowerLawVortices(GeneralizedStokesProblem):
-    n = 4 # Number of vortices
+    n = 1 # Number of vortices
     mu = 1.0
 
-    def __init__(self, N, r):
+    def __init__(self, N, r, eps0):
         mesh = UnitSquareMesh(N, N, "crossed")
         constitutive_law = PowerLawFluid(self.mu, r)
         self.u_ex, self.p_ex, self.s_ex, self.f = \
             pStokes_vortices(n=self.n, mu=self.mu, r=r, eps=0.0,
-                             degree=2, domain=mesh)
-        GeneralizedStokesProblem.__init__(self, mesh, constitutive_law, self.f)
+                             degree=6, domain=mesh)
+        GeneralizedStokesProblem.__init__(self, mesh, constitutive_law,
+                                          self.f, eps0)

@@ -55,7 +55,7 @@ class ImplicitStokesFluxReconstructor(FluxReconstructor):
 
 class GeneralizedStokesProblem(object):
 
-    def __init__(self, mesh, constitutive_law, f):
+    def __init__(self, mesh, constitutive_law, f, eps):
 
         V = VectorFunctionSpace(mesh, 'CG', 2)
         Q = FunctionSpace(mesh, 'CG', 1)
@@ -71,42 +71,50 @@ class GeneralizedStokesProblem(object):
         d = sym(grad(u))
         g = constitutive_law.g()
 
-        # FIXME: get rid of following nasty logic using adaptivity in eps
-        try:
-            g_eps = constitutive_law.g_regularized()
-        except AttributeError:
-            g_eps = None
-            F = ( inner(s, grad(v)) - p*div(v) - q*div(u)
-                + inner(g(s, d), t) - inner(f, v) )*dx
-            F_eps = None
-        else:
-            F = None
-            F_eps = lambda eps: ( inner(s, grad(v)) - p*div(v) - q*div(u)
-                                + inner(g_eps(s, d, eps), t) - inner(f, v) )*dx
+        F = lambda eps: ( inner(s, grad(v)) - p*div(v) - q*div(u)
+                        + inner(g(s, d, eps), t) - inner(f, v) )*dx
 
         bc_u = DirichletBC(W.sub(0), (0.0, 0.0), "on_boundary")
         bc_p = DirichletBC(W.sub(1), 0.0, "near(x[0], 0.0) && near(x[1], 0.0)",
                            method="pointwise")
 
         self._F = F
-        self._F_eps = F_eps
         self._bcs = [bc_u, bc_p]
         self._w = w
         self._constitutive_law = constitutive_law
         self._f = f
+        self._eps = eps
 
 
     def solve(self):
-        if self._F:
-            J = derivative(self._F, self._w)
-            solve(self._F == 0, self._w, bcs=self._bcs, J=J)
-        else:
-            # FIXME: add adaptivity in eps
-            for eps in [10.0**i for i in np.arange(1.0,  -6.0, -0.5)]:
-                F = self._F_eps(eps)
-                J = derivative(F, self._w)
-                solve(F == 0, self._w, bcs=self._bcs, J=J)
+        F = self._F(self._eps)
+        solve(F==0, self._w, bcs=self._bcs, J=derivative(F, self._w))
         return self._w
+
+
+    def solve_adaptive_eps(self):
+        while True:
+            w = self.solve()
+            if self.criterion_eps():
+                break
+        return w
+
+
+    def criterion_eps(self):
+        Eta_disc, Eta_reg, Eta_osc, eta_disc, eta_reg, eta_osc = \
+                self.estimate_errors_components()
+        if Eta_reg <= self.criterion_eps_threshold()*Eta_disc:
+            return True
+        else:
+            # FIXME: Get rid of hardcoded value
+            self._eps *= 0.1**0.5
+            info_red('Decreasing eps to: %g' % self._eps)
+            return False
+
+
+    def criterion_eps_threshold(self):
+        # FIXME: Get rid of hardcoded value
+        return 0.5
 
 
     def reconstructor(self):
@@ -122,7 +130,7 @@ class GeneralizedStokesProblem(object):
         return reconstructor
 
 
-    def estimate_errors(self):
+    def estimate_errors_overall(self):
         w = self._w
         mesh = self._w.function_space().mesh()
         comm = mesh.mpi_comm()
@@ -172,7 +180,7 @@ class GeneralizedStokesProblem(object):
         eta_O_s = assemble(Constant((C_P/mu)**r1)*h**Constant(r1)*inner(f+div(q), f+div(q))**Constant(r1/2)*v*dx)
         eta_F_s = assemble(Constant(1.0/mu**r1)*inner(s-p*I-q, s-p*I-q)**Constant(r1/2)*v*dx)
         eta_D_r = assemble(Constant(1.0/beta**r)*(div(u)*div(u))**Constant(r/2)*v*dx)
-        eta_I_r = assemble(Constant(1.0/gamma**r)*inner(dev(g(s, d)), dev(g(s, d)))**Constant(r/2)*v*dx)
+        eta_I_r = assemble(Constant(1.0/gamma**r)*inner(dev(g(s, d, 0.0)), dev(g(s, d, 0.0)))**Constant(r/2)*v*dx)
         # TODO: Implement VecPow from PETSc
         # TODO: Avoid drastic numpy manipulations
         eta_O = eta_O_s.array() ** (1.0/r1)
@@ -193,6 +201,69 @@ class GeneralizedStokesProblem(object):
                  % (Eta_1, Eta_2, Eta_3))
 
         return Eta_1, Eta_2, Eta_3, eta_1, eta_2, eta_3
+
+
+    def estimate_errors_components(self):
+        w = self._w
+        mesh = self._w.function_space().mesh()
+        comm = mesh.mpi_comm()
+        reconstructor = self.reconstructor()
+        f = self._f
+        r = self._constitutive_law.r()
+
+        u, p, s = w.split()
+        s = deviatoric(s)
+        d = sym(grad(u))
+
+        g = self._constitutive_law.g()
+        eps = self._eps
+
+        gdim = mesh.geometry().dim()
+
+        # TODO: Consolidate notation
+        q = []
+        I = Identity(gdim)
+        stress = -p*I + s
+        algebraic_residual = 0.0
+        for i in xrange(gdim):
+            w = reconstructor.reconstruct(stress[i, :], f[i], algebraic_residual)
+            q.append(w.sub(0, deepcopy=True))
+        q = as_vector(q)
+
+        # Poincare constant on cells
+        cell_type = mesh.type()
+        C_P = poincare_const(cell_type, r, gdim)
+        h = CellDiameters(mesh)
+
+        # Dual Lebesgue exponent; denoted s in the paper
+        r1 = r/(r-1)
+        # r/2 is dangerous for integer r != 2
+        assert isinstance(r, float) and isinstance(r1, float) or r == r1 == 2
+
+        # Weights for measuring residual errors for 3 equations
+        mu = self._constitutive_law.mu()
+        # FIXME: Inf-sup constant of square; see Costabel for general polygons
+        # https://perso.univ-rennes1.fr/martin.costabel/publis/Co_Mafelap2013_print.pdf
+        beta = (0.5 - 1.0/pi)**0.5
+        # FIXME: Lookup gamma computation in my notes; maybe 1 is correct
+        gamma = 1.0
+
+        # Compute estimators
+        DG0 = FunctionSpace(mesh, 'DG', 0)
+        v = TestFunction(DG0)
+        eta_disc = assemble((Constant(1.0/mu**r1)*inner(s-p*I-q, s-p*I-q)**Constant(r1/2)
+                            +Constant(1.0/beta**r)*(div(u)*div(u))**Constant(r/2)
+                            +Constant(1.0/gamma**r)*inner(dev(g(s, d, eps)), dev(g(s, d, eps)))**Constant(r/2))*v*dx)
+        eta_reg = assemble(Constant(1.0/gamma**r)*inner(dev(g(s, d, eps)-g(s, d, 0.0)), dev(g(s, d, eps)-g(s, d, 0.0)))**Constant(r/2)*v*dx)
+        eta_osc = assemble(Constant((C_P/mu)**r1)*h**Constant(r1)*inner(f+div(q), f+div(q))**Constant(r1/2)*v*dx)
+        Eta_disc = eta_disc.norm('l1')
+        Eta_reg = eta_reg.norm('l1')
+        Eta_osc = eta_osc.norm('l1')
+
+        info_red("Estimators eta_disc, eta_reg, eta_osc: %g, %g, %g"
+                 % (Eta_disc, Eta_reg, Eta_osc))
+
+        return Eta_disc, Eta_reg, Eta_osc, eta_disc, eta_reg, eta_osc
 
 
     def compute_exact_bounds(self, u_ex, p_ex, s_ex):
