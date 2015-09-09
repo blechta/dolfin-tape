@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 from matplotlib import gridspec
 import numpy as np
 
-from dolfintape.demo_problems import StokesVortices
+from dolfintape.demo_problems import StokesVortices, PowerLawVortices
 
 
 # Reduce pivotting of LU solver
@@ -52,6 +52,7 @@ f_Upp_1 = dolfin.XDMFFile(comm, prefix+'/Upp_1.xdmf')
 
 for N in mesh_resolutions:
     problem = StokesVortices(N)
+    #problem = PowerLawVortices(N, 2.5)
 
     u = problem.solve().split()[0]
     err_1 = problem.compute_errors()[:1]
