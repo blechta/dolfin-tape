@@ -16,39 +16,41 @@
 # along with dolfin-tape. If not, see <http://www.gnu.org/licenses/>.
 
 from dolfin import Mesh, Cell, Vertex, cells, facets, edges, vertices, \
-        warning, pi, not_working_in_parallel
+        warning, pi, not_working_in_parallel, CellType
 
 from dolfintape.hat_function import hat_function_grad
 
 __all__ = ['poincare_const', 'friedrichs_const', 'poincare_friedrichs_cutoff']
 
 
-def poincare_const(o, p):
+def poincare_const(o, p, d=1):
+    # Vectorial Poincare, see [Blechta, Malek, Vohralik 2016]
+    if d != 1 and p != 2.0:
+        return d**abs(0.5-1.0/p) * poincare_const(o, p)
+
     if isinstance(o, Mesh):
         raise NotImplementedError("Poincare constant not implemented on mesh!")
 
     if isinstance(o, Cell):
-        #assert isinstance(o, IntervalCell) or isinstance(o, TriangleCell) \
-        #        or isinstance(o, TetrahedronCell), "Poincare constant not " \
-        #        "implemented on non-simplicial cells!"
-        d = max(e.length() for e in edges(o))
-        return d*_poincare_convex(p)
+        assert _is_simplex(o), "Poincare constant not " \
+                "implemented on non-simplicial cells!"
+        h = max(e.length() for e in edges(o))
+        return h*_poincare_convex(p)
 
-    if isinstance(o, type) and issubclass(o, Cell):
-        #assert issubclass(o, IntervalCell) or issubclass(o, TriangleCell) \
-        #        or issubclass(o, TetrahedronCell), "Poincare constant not " \
-        #        "implemented on non-simplicial cells!"
+    if isinstance(o, CellType):
+        assert _is_simplex(o), "Poincare constant not " \
+                "implemented on non-simplicial cells!"
         return _poincare_convex(p)
 
     if isinstance(o, Vertex):
         # TODO: fix using ghosted mesh
         not_working_in_parallel("Poincare computation on patch")
-        d = max(v0.point().distance(v1.point())
+        h = max(v0.point().distance(v1.point())
                 for c0 in cells(o) for v0 in vertices(c0)
                 for c1 in cells(o) for v1 in vertices(c1))
         # FIXME: Implement a check for convexity of the patch
         warning("Assuming convex patch for computation of Poincare const!")
-        return d*_poincare_convex(p)
+        return h*_poincare_convex(p)
 
     raise NotImplementedError
 
@@ -94,3 +96,12 @@ def _poincare_convex(p):
         return 1.0/pi
     # [Chua, Wheeden 2006]
     return 2.0*(0.5*p)**(1.0/p)
+
+
+_simplices = [CellType.interval, CellType.triangle, CellType.tetrahedron]
+def _is_simplex(c):
+    if isinstance(c, Cell):
+        return c.type() in _simplices
+    if isinstance(c, CellType):
+        return c.cell_type() in _simplices
+    raise NotImplementedError
