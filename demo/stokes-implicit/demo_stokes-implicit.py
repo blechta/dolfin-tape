@@ -79,14 +79,12 @@ for N in mesh_resolutions:
     Low_1.rename("residual_1 lower estimate", "")
     Upp_1.rename("residual_1 upper estimate", "")
 
-    # FIXME: Deadlock in parallel! Why?
-    if dolfin.MPI.size(comm) == 1:
-        f_u << u, N
-        f_Est_1 << Est_1, N
-        f_Est_2 << Est_2, N
-        f_Est_3 << Est_3, N
-        f_Low_1 << Low_1, N
-        f_Upp_1 << Upp_1, N
+    f_u << u, N
+    f_Est_1 << Est_1, N
+    f_Est_2 << Est_2, N
+    f_Est_3 << Est_3, N
+    f_Low_1 << Low_1, N
+    f_Upp_1 << Upp_1, N
 
 
 if dolfin.MPI.rank(dolfin.mpi_comm_world()) == 0:
