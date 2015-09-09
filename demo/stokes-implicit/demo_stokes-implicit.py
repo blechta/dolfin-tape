@@ -41,6 +41,7 @@ dolfin.parameters['form_compiler']['representation'] = 'uflacs'
 # Reduce pivotting of LU solver
 dolfin.PETScOptions.set('mat_mumps_cntl_1', 0.001)
 
+eps = 10.0
 mesh_resolutions = [4, 8, 16, 32, 64]
 err, est, bnd = [], [], []
 
@@ -53,11 +54,13 @@ f_Est_3 = dolfin.XDMFFile(comm, prefix+'/Est_3.xdmf')
 f_Low_1 = dolfin.XDMFFile(comm, prefix+'/Low_1.xdmf')
 f_Upp_1 = dolfin.XDMFFile(comm, prefix+'/Upp_1.xdmf')
 
+
 for N in mesh_resolutions:
     #problem = StokesVortices(N)
-    problem = PowerLawVortices(N, 2.5, 1.0)
+    problem = PowerLawVortices(N, 2.5, eps)
 
     u = problem.solve_adaptive_eps().split()[0]
+    eps = problem._eps
     err_1 = problem.compute_errors()[:1]
     est_1, est_2, est_3, Est_1, Est_2, Est_3 = \
             problem.estimate_errors_overall()
