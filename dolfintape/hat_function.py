@@ -34,7 +34,7 @@ def hat_function_collection(vertex_colors, color, element=None):
     assert isinstance(vertex_colors, cpp.VertexFunctionSizet)
     mesh = vertex_colors.mesh()
     if not element:
-        element = FiniteElement('Lagrange', mesh, 1)
+        element = FiniteElement('Lagrange', mesh.ufl_cell(), 1)
     assert element.family() in ['Lagrange', 'Discontinuous Lagrange']
     assert element.degree() == 1
     ufc_element, ufc_dofmap = jit(element, mpi_comm=mesh.mpi_comm())
@@ -84,7 +84,7 @@ def hat_function(vertex):
     """
     assert isinstance(vertex, Vertex)
     mesh = vertex.mesh()
-    element = FiniteElement('Lagrange', mesh, 1)
+    element = FiniteElement('Lagrange', mesh.ufl_cell(), 1)
     ufc_element, ufc_dofmap = jit(element, mpi_comm=mesh.mpi_comm())
     dolfin_element = cpp.FiniteElement(ufc_element)
 

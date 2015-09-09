@@ -327,8 +327,8 @@ class FluxReconstructor(object):
         size = MPI.size(comm)
 
         # Construct cell space for flux reconstruction mixed problem
-        RT = FiniteElement('Raviart-Thomas', mesh, degree + 1)
-        DG = FiniteElement('Discontinuous Lagrange', mesh, degree)
+        RT = FiniteElement('Raviart-Thomas', mesh.ufl_cell(), degree + 1)
+        DG = FiniteElement('Discontinuous Lagrange', mesh.ufl_cell(), degree)
         W = FunctionSpaceBase(mesh, RT*DG)
         self._W = W
         dofmap = W.dofmap()
