@@ -129,7 +129,7 @@ class GeneralizedStokesProblem(object):
             w = self.solve_adaptive_eps()
             if self.criterion_h():
                 info_blue('Mesh refinement loop converged with %d DOFs'
-                            % w.function_space().dim)
+                            % w.function_space().dim())
                 break
         return w
 
@@ -150,7 +150,8 @@ class GeneralizedStokesProblem(object):
         Eta_1, Eta_2, Eta_3, eta_1, eta_2, eta_3 = \
                 self.estimate_errors_overall()
         # FIXME: Get rid of hardcoded value
-        if Eta_1 < 1e-3 and Eta_2 < 1e-3 and Eta_3 < 1e-3:
+        #if Eta_1 < 1e-3 and Eta_2 < 1e-3 and Eta_3 < 1e-3:
+        if Eta_1 < 0.1:
             return True
         else:
             cf = self.compute_refinement_markers(eta_1, eta_2, eta_3)
@@ -161,7 +162,7 @@ class GeneralizedStokesProblem(object):
     def compute_refinement_markers(self, eta_1, eta_2, eta_3):
         # FIXME: This primitive algorithm is basically wrong
         # FIXME: Get rid of hardcoded value
-        threshold = 0.5
+        threshold = 0.95
 
         cf = CellFunction('bool', self._mesh)
 

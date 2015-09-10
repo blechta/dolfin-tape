@@ -50,9 +50,11 @@ class PowerLawVortices(GeneralizedStokesProblem):
     def __init__(self, N, r, eps0):
         mesh = UnitSquareMesh(N, N, "crossed")
         constitutive_law = PowerLawFluid(self.mu, r)
+        # FIXME: Those expressions need domain but it causes integration domain
+        #        confusion in spatial adaptivity
         self.u_ex, self.p_ex, self.s_ex, self.f = \
             pStokes_vortices(n=self.n, mu=self.mu, r=r, eps=0.0,
-                             degree=6)
+                             degree=6, domain=mesh)
         GeneralizedStokesProblem.__init__(self, mesh, constitutive_law,
                                           self.f, eps0)
 

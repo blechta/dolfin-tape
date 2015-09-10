@@ -23,8 +23,6 @@ reconstruction as described in
     [J. Blechta, J. M\'alek, M. Vohral\'ik, Generalized Stokes flows of
     implicitly constituted fluids: a posteriori error control and full
     adaptivity, in preparation, 2016.]
-
-TODO: This implements Newtonian fluid. Prepare non-Newtonian.
 """
 
 import dolfin
@@ -34,33 +32,63 @@ import numpy as np
 
 from dolfintape.demo_problems.GeneralizedStokes import GeneralizedStokesProblem
 from dolfintape.demo_problems.PowerLawVortices import PowerLawFluid
+from dolfintape.demo_problems.exact_solutions import pStokes_vortices
 
 
 class DolfinObstacleProblem(GeneralizedStokesProblem):
     mu = 1.0
-    eps0 = 1.0
-    f = dolfin.Constant((0.0, 0.0))
+    eps0 = 100.0
+    #f = dolfin.Constant((0.0, 0.0))
 
     def __init__(self, r):
-        self._mesh, self._ff = self.load_mesh()
+        #self._mesh, self._ff = self.load_mesh()
+        self._mesh = self.load_mesh()
+        _, _, _, self.f = pStokes_vortices(n=1, mu=self.mu, r=r, eps=0.0,
+                                           degree=1)
         self._constitutive_law = PowerLawFluid(self.mu, r)
         GeneralizedStokesProblem.__init__(self, self._mesh,
                                           self._constitutive_law,
                                           self.f, self.eps0)
 
     def load_mesh(self):
-        mesh = dolfin.Mesh('dolfin_fine.xml.gz')
-        ff = dolfin.MeshFunction('size_t', mesh,
-                                 'dolfin_fine_subdomains.xml.gz')
-        return mesh, ff
+        #mesh = dolfin.Mesh('dolfin_fine.xml.gz')
+        mesh = dolfin.Mesh('dolfin_coarse.xml.gz')
+        #ff = dolfin.MeshFunction('size_t', mesh,
+        #                         'dolfin_fine_subdomains.xml.gz')
+        #return mesh, ff
+        return mesh
 
     def bcs(self, W):
-        bc_u0 = dolfin.DirichletBC(W.sub(0), ( 0.0, 0.0), self._ff, 0)
-        bc_u1 = dolfin.DirichletBC(W.sub(0), (-1.0, 0.0), self._ff, 1)
+        #bc_u0 = dolfin.DirichletBC(W.sub(0), ( 0.0, 0.0), self._ff, 0)
+        #bc_u1 = dolfin.DirichletBC(W.sub(0), (-1.0, 0.0), self._ff, 1)
+        bc_u = dolfin.DirichletBC(W.sub(0), (0.0, 0.0), "on_boundary")
         bc_p = dolfin.DirichletBC(W.sub(1), 0.0,
                                   "near(x[0], 0.0) && near(x[1], 0.0)",
                                   method="pointwise")
-        return [bc_u0, bc_u1, bc_p]
+        #return [bc_u0, bc_u1, bc_p]
+        return [bc_u, bc_p]
+
+    def criterion_h(self):
+        est_1, est_2, est_3, Est_1, Est_2, Est_3 = \
+                self.estimate_errors_overall()
+        u = self._w.sub(0)
+        N = self._w.function_space().dim()
+
+        dolfin.plot(u, title='solution at N = %d' % N)
+        dofs.append(N)
+        est.append([est_1, est_2, est_3])
+
+        u.rename("velocity", "")
+        Est_1.rename("residual_1 estimate", "")
+        Est_2.rename("residual_2 estimate", "")
+        Est_3.rename("residual_3 estimate", "")
+
+        f_u << u, N
+        f_Est_1 << Est_1, N
+        f_Est_2 << Est_2, N
+        f_Est_3 << Est_3, N
+
+        return GeneralizedStokesProblem.criterion_h(self)
 
 
 # UFLACS form compiler performs much better for complex forms
@@ -69,7 +97,7 @@ dolfin.parameters['form_compiler']['representation'] = 'uflacs'
 # Reduce pivotting of LU solver
 dolfin.PETScOptions.set('mat_mumps_cntl_1', 0.001)
 
-err, est = [], []
+dofs, est = [], []
 
 comm = dolfin.mpi_comm_world()
 prefix = 'results'
@@ -79,54 +107,25 @@ f_Est_2 = dolfin.XDMFFile(comm, prefix+'/Est_2.xdmf')
 f_Est_3 = dolfin.XDMFFile(comm, prefix+'/Est_3.xdmf')
 
 problem = DolfinObstacleProblem(2.5)
-
-#problem.solve_adaptive_h()
-
-# TODO: Add spatial adaptivity
-for N in range(3):
-    if N > 0:
-        problem.refine()
-
-    u = problem.solve_adaptive_eps().split()[0]
-    eps = problem._eps
-    err_1 = problem.compute_errors()[:1]
-    est_1, est_2, est_3, Est_1, Est_2, Est_3 = \
-            problem.estimate_errors_overall()
-
-    dolfin.plot(u, title='solution at N = %d' % N)
-    err.append([err_1])
-    est.append([est_1, est_2, est_3])
-
-    u.rename("velocity", "")
-    Est_1.rename("residual_1 estimate", "")
-    Est_2.rename("residual_2 estimate", "")
-    Est_3.rename("residual_3 estimate", "")
-
-    f_u << u, N
-    f_Est_1 << Est_1, N
-    f_Est_2 << Est_2, N
-    f_Est_3 << Est_3, N
-
+problem.solve_adaptive_h()
 
 if dolfin.MPI.rank(dolfin.mpi_comm_world()) == 0:
-    err = np.array(err, dtype='float')
     est = np.array(est, dtype='float')
 
     gs = gridspec.GridSpec(3, 2, width_ratios=[7, 1])
 
     plt.subplot(gs[0])
-    plt.plot(mesh_resolutions, err[:, 0], 'o-', label='lft')
-    plt.plot(mesh_resolutions, est[:, 0], 'o-', label='est')
+    plt.plot(dofs, est[:, 0], 'o-', label='est')
     plt.loglog()
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 
     plt.subplot(gs[2])
-    plt.plot(mesh_resolutions, est[:, 1], 'o-', label='est')
+    plt.plot(dofs, est[:, 1], 'o-', label='est')
     plt.loglog()
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 
     plt.subplot(gs[4])
-    plt.plot(mesh_resolutions, est[:, 2], 'o-', label='est')
+    plt.plot(dofs, est[:, 2], 'o-', label='est')
     plt.loglog()
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 

@@ -22,21 +22,13 @@ TODO: Add relevant reference.
 """
 
 from dolfin import *
-import mshr
 import matplotlib.pyplot as plt
 import numpy as np
 
 from dolfintape import FluxReconstructor, CellDiameters
-from dolfintape.mesh_fixup import mesh_fixup
 
 
-# Prepare L-shaped mesh
-b0 = mshr.Rectangle(Point(0.0, 0.0), Point(0.5, 1.0))
-b1 = mshr.Rectangle(Point(0.0, 0.0), Point(1.0, 0.5))
-mesh = mshr.generate_mesh(b0 + b1, 80)
-mesh = mesh_fixup(mesh)
-
-# Prepare function spaces and rhs
+mesh = UnitSquareMesh(40, 40, 'crossed')
 V = FunctionSpace(mesh, 'Lagrange', 1)
 DG0 = FunctionSpace(mesh, 'DG', 0)
 f = Expression("1.+cos(2.*pi*x[0])*sin(2.*pi*x[1])", domain=mesh, degree=2)
@@ -100,8 +92,6 @@ def plot_conv(p, errors):
               r'$||f+\mathrm{div}|\nabla u|^{p-2}\nabla u||_{-1,p}$')
     plt.xlabel(r'$\epsilon$')
     plt.loglog()
-    plt.legend(loc=4)
-    plt.savefig('results/convergence_p%g.pdf' % p)
 
 
 def run_demo(p, epsilons, zero_guess=False):
@@ -118,12 +108,16 @@ def run_demo(p, epsilons, zero_guess=False):
         plot(u, title='p-Laplace, p=%g, eps=%g'%(p, eps))
     plot_conv(p, estimates)
 
+    plt.legend(loc=4)
+    plt.savefig('results/convergence_p%g.pdf' % p)
     plt.show(block=True)
     interactive()
 
 
 if __name__ == '__main__':
 
-    run_demo(11.0,  [10.0**i for i in np.arange(1.0,  -6.0, -0.5)])
-    run_demo( 1.35, [10.0**i for i in np.arange(0.0, -22.0, -2.0)])
-    run_demo( 1.1,  [10.0**i for i in np.arange(0.0, -22.0, -2.0)], True)
+    # p = 11.0
+    run_demo(11.0, [10.0**i for i in np.arange(1.0,  -6.0, -0.5)])
+
+    # p = 1.1; works better with zero guess
+    run_demo( 1.1, [10.0**i for i in np.arange(0.0, -22.0, -2.0)], True)

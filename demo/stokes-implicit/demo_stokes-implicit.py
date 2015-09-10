@@ -23,8 +23,6 @@ reconstruction as described in
     [J. Blechta, J. M\'alek, M. Vohral\'ik, Generalized Stokes flows of
     implicitly constituted fluids: a posteriori error control and full
     adaptivity, in preparation, 2016.]
-
-TODO: This implements Newtonian fluid. Prepare non-Newtonian.
 """
 
 import dolfin
