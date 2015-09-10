@@ -11,3 +11,6 @@ build/
 
 *.png
 *.pdf
+
+*.xml
+*.xml.gz
