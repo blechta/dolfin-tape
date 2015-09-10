@@ -42,16 +42,23 @@ class DolfinObstacleProblem(GeneralizedStokesProblem):
     f = dolfin.Constant((0.0, 0.0))
 
     def __init__(self, r):
-        mesh = dolfin.Mesh('dolfin_fine.xml.gz')
-        constitutive_law = PowerLawFluid(self.mu, r)
-        GeneralizedStokesProblem.__init__(self, mesh, constitutive_law,
+        self._mesh, self._ff = self.load_mesh()
+        self._constitutive_law = PowerLawFluid(self.mu, r)
+        GeneralizedStokesProblem.__init__(self, self._mesh,
+                                          self._constitutive_law,
                                           self.f, self.eps0)
 
+    def load_mesh(self):
+        mesh = dolfin.Mesh('dolfin_fine.xml.gz')
+        ff = dolfin.MeshFunction('size_t', mesh,
+                                 'dolfin_fine_subdomains.xml.gz')
+        return mesh, ff
+
     def bcs(self, W):
-        ff = dolfin.MeshFunction('size_t', W.mesh(), 'dolfin_fine_subdomains.xml.gz')
-        bc_u0 = dolfin.DirichletBC(W.sub(0), ( 0.0, 0.0), ff, 0)
-        bc_u1 = dolfin.DirichletBC(W.sub(0), (-1.0, 0.0), ff, 1)
-        bc_p = dolfin.DirichletBC(W.sub(1), 0.0, "near(x[0], 0.0) && near(x[1], 0.0)",
+        bc_u0 = dolfin.DirichletBC(W.sub(0), ( 0.0, 0.0), self._ff, 0)
+        bc_u1 = dolfin.DirichletBC(W.sub(0), (-1.0, 0.0), self._ff, 1)
+        bc_p = dolfin.DirichletBC(W.sub(1), 0.0,
+                                  "near(x[0], 0.0) && near(x[1], 0.0)",
                                   method="pointwise")
         return [bc_u0, bc_u1, bc_p]
 
@@ -71,10 +78,12 @@ f_Est_1 = dolfin.XDMFFile(comm, prefix+'/Est_1.xdmf')
 f_Est_2 = dolfin.XDMFFile(comm, prefix+'/Est_2.xdmf')
 f_Est_3 = dolfin.XDMFFile(comm, prefix+'/Est_3.xdmf')
 
+problem = DolfinObstacleProblem(2.5)
 
 # TODO: Add spatial adaptivity
-for N in range(1):
-    problem = DolfinObstacleProblem(2.5)
+for N in range(3):
+    if N > 0:
+        problem.refine()
 
     u = problem.solve_adaptive_eps().split()[0]
     eps = problem._eps

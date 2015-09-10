@@ -23,6 +23,7 @@ from dolfintape import FluxReconstructor
 from dolfintape.deviatoric_space import TensorFunctionSpace, deviatoric
 from dolfintape.cell_diameter import CellDiameters
 from dolfintape.poincare import poincare_const
+from dolfintape.utils import adapt
 
 
 class ImplicitStokesFluxReconstructor(FluxReconstructor):
@@ -63,7 +64,16 @@ class GeneralizedStokesProblem(object):
         W = MixedFunctionSpace([V, Q, S])
         info_blue('Number DOFs: %d' % W.dim())
 
-        w = Function(W)
+        # Interpolate possibly stored old solution to the new space
+        try:
+            w = self._w
+        except AttributeError:
+            w = Function(W)
+        else:
+            # FIXME: use LagrangeInterpolater for parallel functionality
+            w.set_allow_extrapolation(True)
+            w = interpolate(w, W)
+
         (u, p, s) = split(w)
         (v, q, t) = TestFunctions(W)
         s = deviatoric(s)
@@ -82,6 +92,20 @@ class GeneralizedStokesProblem(object):
         self._constitutive_law = constitutive_law
         self._f = f
         self._eps = eps
+
+
+    def refine(self, *args):
+        # Refine mesh and facet function if any
+        parameters["refinement_algorithm"] = "plaza_with_parent_facets"
+        self._mesh = refine(self._mesh, *args)
+        try:
+            self._ff = adapt(self._ff, self._mesh)
+        except AttributeError:
+            pass
+        # Forms and function adapted by constructor
+        GeneralizedStokesProblem.__init__(self, self._mesh,
+                                          self._constitutive_law,
+                                          self.f, self.eps0)
 
 
     def solve(self):
@@ -119,7 +143,8 @@ class GeneralizedStokesProblem(object):
     def reconstructor(self):
         try:
             reconstructor = self._reconstructor
-        except AttributeError:
+            assert reconstructor._mesh == self._mesh
+        except (AttributeError, AssertionError):
             mesh = self._w.function_space().mesh()
             l = self._w.function_space().ufl_element().sub_elements()[0].degree()
             r = self._constitutive_law.r()
