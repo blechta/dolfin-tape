@@ -86,6 +86,7 @@ class GeneralizedStokesProblem(object):
                         + inner(g(s, d, eps), t) - inner(f, v) )*dx
         bcs = self.bcs(W)
 
+        self._mesh = mesh
         self._F = F
         self._bcs = bcs
         self._w = w
@@ -105,7 +106,7 @@ class GeneralizedStokesProblem(object):
         # Forms and function adapted by constructor
         GeneralizedStokesProblem.__init__(self, self._mesh,
                                           self._constitutive_law,
-                                          self.f, self.eps0)
+                                          self.f, self._eps)
 
 
     def solve(self):
@@ -123,6 +124,16 @@ class GeneralizedStokesProblem(object):
         return w
 
 
+    def solve_adaptive_h(self):
+        while True:
+            w = self.solve_adaptive_eps()
+            if self.criterion_h():
+                info_blue('Mesh refinement loop converged with %d DOFs'
+                            % w.function_space().dim)
+                break
+        return w
+
+
     def criterion_eps(self):
         Eta_disc, Eta_reg, Eta_osc, eta_disc, eta_reg, eta_osc = \
                 self.estimate_errors_components()
@@ -135,6 +146,41 @@ class GeneralizedStokesProblem(object):
             return False
 
 
+    def criterion_h(self):
+        Eta_1, Eta_2, Eta_3, eta_1, eta_2, eta_3 = \
+                self.estimate_errors_overall()
+        # FIXME: Get rid of hardcoded value
+        if Eta_1 < 1e-3 and Eta_2 < 1e-3 and Eta_3 < 1e-3:
+            return True
+        else:
+            cf = self.compute_refinement_markers(eta_1, eta_2, eta_3)
+            self.refine(cf)
+            return False
+
+
+    def compute_refinement_markers(self, eta_1, eta_2, eta_3):
+        # FIXME: This primitive algorithm is basically wrong
+        # FIXME: Get rid of hardcoded value
+        threshold = 0.5
+
+        cf = CellFunction('bool', self._mesh)
+
+        ufc_cell = dolfin.cpp.mesh.ufc.cell()
+        x = np.array(self._mesh.geometry().dim()*(0.0,), dtype='float_')
+        y = np.array((0.0,), dtype='float_')
+
+        for eta in (eta_1, eta_2, eta_3):
+            eta_max = eta.vector().max()
+            for c in cells(self._mesh):
+                c.get_cell_data(ufc_cell)
+                eta.eval(y, x, c, ufc_cell)
+                if y[0] > threshold * eta_max:
+                    cf[c] = True
+
+        #plot(cf, interactive=True)
+        return cf
+
+
     def criterion_eps_threshold(self):
         # FIXME: Get rid of hardcoded value
         return 0.5
@@ -143,7 +189,7 @@ class GeneralizedStokesProblem(object):
     def reconstructor(self):
         try:
             reconstructor = self._reconstructor
-            assert reconstructor._mesh == self._mesh
+            assert reconstructor._mesh.id() == self._mesh.id()
         except (AttributeError, AssertionError):
             mesh = self._w.function_space().mesh()
             l = self._w.function_space().ufl_element().sub_elements()[0].degree()

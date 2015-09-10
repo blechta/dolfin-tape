@@ -43,6 +43,7 @@ dolfin.PETScOptions.set('mat_mumps_cntl_1', 0.001)
 
 eps = 10.0
 mesh_resolutions = [4, 8, 16, 32, 64]
+#mesh_resolutions = [4]
 err, est, bnd = [], [], []
 
 comm = dolfin.mpi_comm_world()
@@ -59,6 +60,7 @@ for N in mesh_resolutions:
     #problem = StokesVortices(N)
     problem = PowerLawVortices(N, 2.5, eps)
 
+    #u = problem.solve_adaptive_h().split()[0]
     u = problem.solve_adaptive_eps().split()[0]
     eps = problem._eps
     err_1 = problem.compute_errors()[:1]

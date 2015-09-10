@@ -46,7 +46,7 @@ class StokesVortices(GeneralizedStokesProblem):
         constitutive_law = NewtonianFluid(self.mu)
         self.u_ex, self.p_ex, self.s_ex, self.f = \
             pStokes_vortices(n=self.n, mu=self.mu, r=2, eps=0.0,
-                             degree=6, domain=mesh)
+                             degree=6)
         GeneralizedStokesProblem.__init__(self, mesh, constitutive_law,
                                           self.f, 0.0)
 

@@ -80,6 +80,8 @@ f_Est_3 = dolfin.XDMFFile(comm, prefix+'/Est_3.xdmf')
 
 problem = DolfinObstacleProblem(2.5)
 
+#problem.solve_adaptive_h()
+
 # TODO: Add spatial adaptivity
 for N in range(3):
     if N > 0:
