@@ -329,7 +329,7 @@ class FluxReconstructor(object):
         # Construct cell space for flux reconstruction mixed problem
         RT = FiniteElement('Raviart-Thomas', mesh.ufl_cell(), degree + 1)
         DG = FiniteElement('Discontinuous Lagrange', mesh.ufl_cell(), degree)
-        W = FunctionSpaceBase(mesh, RT*DG)
+        W = FunctionSpace(mesh, RT*DG)
         self._W = W
         dofmap = W.dofmap()
         dofmap_dg = W.sub(1).dofmap()

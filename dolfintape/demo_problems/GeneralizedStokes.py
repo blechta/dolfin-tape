@@ -61,6 +61,7 @@ class GeneralizedStokesProblem(object):
         V = VectorFunctionSpace(mesh, 'CG', 2)
         Q = FunctionSpace(mesh, 'CG', 1)
         S = TensorFunctionSpace(mesh, 'DG', 1, symmetry=True, zero_trace=True)
+        # FIXME: Get rid of deprecated MixedFunctionSpace
         W = MixedFunctionSpace([V, Q, S])
         info_blue('Number DOFs: %d' % W.dim())
 

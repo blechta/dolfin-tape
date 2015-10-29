@@ -32,19 +32,26 @@ def TensorFunctionSpace(*args, **kwargs):
         return dolfin.TensorFunctionSpace(*args, **kwargs)
 
 
-class ZeroTraceTensorFunctionSpace(dolfin.VectorFunctionSpace):
-    def __init__(self, mesh, *args, **kwargs):
-        if not isinstance(mesh, (cpp.Mesh, cpp.Restriction)):
+class ZeroTraceTensorFunctionSpace(dolfin.FunctionSpace):
+    def __new__(cls, mesh, *args, **kwargs):
+        if not isinstance(mesh, cpp.Mesh):
             cpp.dolfin_error("functionspace.py",
                              "create function space",
-                             "Illegal argument, not a mesh or restriction: " + str(mesh))
+                             "Illegal argument, not a mesh: " + str(mesh))
         if not kwargs.pop("symmetry", False):
             raise NotImplementedError, "Unsymmetric ZeroTraceTensorFunctionSpace" \
                     " not implemented!"
-        kwargs["dim"] = self._num_components(mesh.geometry().dim())
-        dolfin.VectorFunctionSpace.__init__(self, mesh, *args, **kwargs)
+        assert not kwargs.get("dim")
+        kwargs["dim"] = cls._num_components(mesh.geometry().dim())
+        V = dolfin.VectorFunctionSpace(mesh, *args, **kwargs)
+        V.__class__ = ZeroTraceTensorFunctionSpace
+        return V
 
-    def _num_components(self, gdim):
+    def __init__(self, *args, **kwargs):
+        pass
+
+    @staticmethod
+    def _num_components(gdim):
         return {2: 2, 3: 5}[gdim]
 
 
