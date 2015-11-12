@@ -24,9 +24,11 @@ its residual in W^{-1,q} to demonstrate localization result of
 
 from dolfin import *
 import ufl
+import numpy as np
 
 from dolfintape import FluxReconstructor, CellDiameters
 from dolfintape.poincare import poincare_friedrichs_cutoff
+from dolfintape.hat_function import hat_function
 
 
 class ReconstructorCache(dict):
@@ -188,9 +190,17 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
 
         # Lower estimate on ||R||_a using exact solution
         if exact_solution:
-            hat = hat_function(v)
-            r_norm_loc_low = assemble(action(R, hat*u)-action(R, hat*exact_solution)) \
-                    / sobolev_norm(hat*(u - exact_solution), p)
+            # Prepare hat function on submesh
+            parent_indices = submesh.data().array('parent_vertex_indices', 0)
+            submesh_index = np.where(parent_indices == v.index())[0][0]
+            assert parent_indices[submesh_index] == v.index()
+            hat = hat_function(Vertex(submesh, submesh_index))
+
+            # Compute residual lower bound
+            phi = TestFunction(V_loc)
+            R = lambda phi: ( inner(S, grad(phi)) - f*phi ) * dx(submesh)
+            r_norm_loc_low = assemble(R(hat*u) - R(hat*exact_solution)) \
+                    / sobolev_norm(hat*(u - exact_solution), p, submesh)
             info_blue("||R||_a >= %g" % r_norm_loc_low)
 
         # Advance progress bar
@@ -224,9 +234,10 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
     interactive()
 
 
-def sobolev_norm(u, p):
+def sobolev_norm(u, p, domain=None):
     p = Constant(p) if p is not 2 else p
-    return assemble(inner(grad(u), grad(u))**(p/2)*dx)**(1.0/float(p))
+    dX = dx(domain)
+    return assemble(inner(grad(u), grad(u))**(p/2)*dX)**(1.0/float(p))
 
 
 class Extension(Expression):
@@ -243,13 +254,13 @@ class Extension(Expression):
 
 
 if __name__ == '__main__':
-    import numpy as np
     from dolfintape.demo_problems.exact_solutions import pLaplace_modes
     from dolfintape.mesh_fixup import mesh_fixup
     import mshr
 
     # UFLACS issue #49
     #parameters['form_compiler']['representation'] = 'uflacs'
+    #parameters['linear_algebra_backend'] = 'Eigen'
 
     # -------------------------------------------------------------------------
     # Tests on unit square
