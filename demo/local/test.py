@@ -44,7 +44,16 @@ class ReconstructorCache(dict):
 reconstructor_cache = ReconstructorCache()
 
 
-def solve_p_laplace(p, eps, V, rhs, u0=None, exact_solution=None):
+def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
+    """Approximate (p, eps)-Laplace problem with rhs of the form
+
+        (f, v) - (df, grad(v))  with test function v
+
+    on space V with initial Newton approximation u0. Return solution
+    approximation, discretization err estimate, regularization err
+    estimate, total err estimate and energy-like upper estimate (if
+    exact solution is provided).
+    """
     p1 = p/(p-1)
     p = Constant(p)
     p1 = Constant(p1)
@@ -56,44 +65,28 @@ def solve_p_laplace(p, eps, V, rhs, u0=None, exact_solution=None):
     # Initial approximation for Newton
     u = u0.copy(deepcopy=True) if u0 else Function(V)
 
-    # Integrable right-hand side
-    if isinstance(rhs, GenericFunction):
-        L, f = rhs*TestFunction(V)*dx, rhs
-    # Generic functional
-    else:
-        assert isinstance(rhs, ufl.Form)
-        assert len(rhs.arguments()) == 1
-        rhs = ufl.replace(rhs, {rhs.arguments()[0]: TestFunction(V)})
-        L, f = rhs, None
-
     # Problem formulation
-    E = 1./p*(eps + dot(grad(u), grad(u)))**(0.5*p)*dx - action(L, u)
-    F = derivative(E, u)
+    S = inner(grad(u), grad(u))**(0.5*p-1.0) * grad(u) + df
+    S_eps = (eps + inner(grad(u), grad(u)))**(0.5*p-1.0) * grad(u) + df
+    v = TestFunction(V)
+    F_eps = ( inner(S_eps, grad(v)) - f*v ) * dx
     bc = DirichletBC(V, 0.0, lambda x, onb: onb)
-    solve(F == 0, u, bc,
+    solve(F_eps == 0, u, bc,
           solver_parameters={'newton_solver':
                                 {'maximum_iterations': 500,
                                  'report': False}
                             })
 
-    # Skip error estimation if rhs is not integrable
-    if not f:
-        return u, None, None, None, None
-
     # Reconstruct flux q in H^p1(div) s.t.
     #       q ~ -S
     #   div q ~ f
-    S = inner(grad(u), grad(u))**(0.5*p-1.0) * grad(u)
-    S_eps = (eps + inner(grad(u), grad(u)))**(0.5*p-1.0) * grad(u)
     tic()
     reconstructor = reconstructor_cache[(V.mesh(), V.ufl_element().degree())]
     q = reconstructor.reconstruct(S, f).sub(0, deepcopy=False)
     info_green('Flux reconstruction timing: %g seconds' % toc())
 
-    DG0 = FunctionSpace(mesh, 'Discontinuous Lagrange', 0)
-
     # Compute error estimate using equilibrated stress reconstruction
-    v = TestFunction(DG0)
+    v = TestFunction(FunctionSpace(mesh, 'Discontinuous Lagrange', 0))
     h = CellDiameters(mesh)
     Cp = Constant(2.0*(0.5*p)**(1.0/p)) # Poincare estimates by [Chua, Wheeden 2006]
     est0 = assemble(((Cp*h*(f-div(q)))**2)**(0.5*p1)*v*dx)
@@ -125,20 +118,19 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
 
     u = None
     for eps in epsilons:
-        u = solve_p_laplace(p, eps, V, f, None if zero_guess else u,
-                            exact_solution)[0]
+        # TODO: No need for iteration if zero_guess
+        u = solve_p_laplace(p, eps, V, f, zero(mesh.geometry().dim()),
+                            None if zero_guess else u, exact_solution)[0]
 
-    # Define residal form
-    eps = Constant(0.0)
-    E = ( 1./Constant(p)*(eps + dot(grad(u), grad(u)))**(0.5*Constant(p)) - f*u ) * dx
-    R = derivative(E, u)
+    # p-Laplacian flux of u
+    S = inner(grad(u), grad(u))**(0.5*p-1.0) * grad(u)
 
-    # Global lifting of residual
+    # Global lifting of W^{-1, p'} functional R = f + div(S)
     V_high = FunctionSpace(mesh, 'Lagrange', 4)
     r_glob = None
     for eps in epsilons[:6]:
         parameters['form_compiler']['quadrature_degree'] = 8
-        r_glob = solve_p_laplace(p, eps, V_high, R,
+        r_glob = solve_p_laplace(p, eps, V_high, f, S,
                                  None if zero_guess else r_glob)[0]
         parameters['form_compiler']['quadrature_degree'] = -1
         plot(r_glob)
@@ -147,6 +139,8 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
 
     # Lower estimate on ||R|| using exact solution
     if exact_solution:
+        v = TestFunction(V)
+        R = ( inner(S, grad(v)) - f*v ) * dx(mesh)
         # FIXME: Possible cancellation due to underintegrating?!
         r_norm_glob_low = assemble(action(R, u)-action(R, exact_solution)) \
                 / sobolev_norm(u - exact_solution, p)
@@ -174,13 +168,10 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
             cf[c] = 1
         submesh = SubMesh(mesh, cf, 1)
         V_loc = FunctionSpace(submesh, 'Lagrange', 4)
-        eps = Constant(0.0)
-        E = ( 1./Constant(p)*(eps + dot(grad(u), grad(u)))**(0.5*Constant(p)) - f*u ) * dx(submesh)
-        R = derivative(E, u, TestFunction(V_loc))
         for eps in epsilons[:6]:
             #parameters['form_compiler']['quadrature_degree'] = 4
             parameters['form_compiler']['quadrature_degree'] = 8
-            r = solve_p_laplace(p, eps, V_loc, R)[0]
+            r = solve_p_laplace(p, eps, V_loc, f, S)[0]
             parameters['form_compiler']['quadrature_degree'] = -1
             #plot(r)
         r_norm_loc += sobolev_norm(r, p)**p
