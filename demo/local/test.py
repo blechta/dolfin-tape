@@ -30,6 +30,8 @@ from dolfintape import FluxReconstructor, CellDiameters
 from dolfintape.poincare import poincare_friedrichs_cutoff
 from dolfintape.hat_function import hat_function
 
+not_working_in_parallel('This')
+
 
 class ReconstructorCache(dict):
     def __setitem__(self, key, value):
@@ -150,7 +152,17 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
 
     #interactive()
 
-    # Local lifting of residual
+
+    # P1 lifting of local residuals
+    P1 = V
+    assert P1.ufl_element().family() == 'Lagrange' \
+            and P1.ufl_element().degree() == 1
+    r_loc_p1 = Function(P1)
+    r_loc_p1_dofs = r_loc_p1.vector()
+    v2d = vertex_to_dof_map(P1)
+
+    # Alterative local lifting of residual
+    # FIXME: Does this have a sense?
     r_norm_loc = 0.0
     cf = CellFunction('size_t', mesh)
     #r_loc = Function(V)
@@ -176,7 +188,15 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
             r = solve_p_laplace(p, eps, V_loc, f, S)[0]
             parameters['form_compiler']['quadrature_degree'] = -1
             #plot(r)
-        r_norm_loc += sobolev_norm(r, p)**p
+
+        # Compute local norm of residual
+        r_norm_loc_a = sobolev_norm(r, p)**p
+        r_norm_loc += r_norm_loc_a
+        scale = (mesh.topology().dim() + 1) / sum(c.volume() for c in cells(v))
+        r_loc_p1_dofs[v2d[v.index()]] = r_norm_loc_a * scale
+        info_blue("||r_a|| = %g" % r_norm_loc_a)
+
+        # Alternative local lifting
         r = Extension(r, domain=mesh, element=r.ufl_element())
         r_loc_temp.interpolate(r)
         #project(r, V=r_loc_temp.function_space(), function=r_loc_temp, solver_type='lu')
@@ -190,6 +210,8 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
 
         # Lower estimate on ||R||_a using exact solution
         if exact_solution:
+            # FIXME: Treat hat as P1 test function to save resources
+
             # Prepare hat function on submesh
             parent_indices = submesh.data().array('parent_vertex_indices', 0)
             submesh_index = np.where(parent_indices == v.index())[0][0]
@@ -212,7 +234,14 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
     set_log_level(old_log_level)
 
     r_norm_loc **= 1.0/p1
-    plot(r_loc)
+    plot(r_loc, title='Alternative local lifting')
+    plot(r_loc_p1, title='P1 local lifting')
+    try:
+        e_norm = assemble(r_loc_p1*dx)
+        assert np.isclose(e_norm, r_norm_loc**p1)
+    except AssertionError:
+        info_red(r"||e||_q^q = %g, \sum_a ||\nabla r_a||_p^p = %g"
+                % (e_norm, r_norm_loc**p1))
 
     info_blue(r"||\nabla r||_p^(p-1) = %g, ( \sum_a ||\nabla r_a||_p^p )^(1/q) = %g"
               % (r_norm_glob, r_norm_loc))
