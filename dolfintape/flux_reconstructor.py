@@ -210,25 +210,22 @@ class FluxReconstructor(object):
         is used from Vector/MatrixView."""
         comm = self._mesh.mpi_comm()
         color_num = self._color_num
-        patches_dim_global = self._patches_dim_global
-        patches_dim_offset = self._patches_dim_offset
         patches_dim_owned = self._patches_dim_owned
         dof_mapping = self._dof_mapping
+        local_to_global_patches = self._local_to_global_patches
 
         # Prepare tensor layout and build sparsity pattern
-        tl_A = TensorLayout(comm,
-                            np.array(2*(patches_dim_global,), dtype='uintp'),
-                            0,
-                            1,
-                            np.array(2*((patches_dim_offset, patches_dim_offset + patches_dim_owned), ), dtype='uintp'),
-                            True)
-        tl_b = TensorLayout(comm,
-                            np.array((patches_dim_global,), dtype='uintp'),
-                            0,
-                            1,
-                            np.array(((patches_dim_offset, patches_dim_offset + patches_dim_owned), ), dtype='uintp'),
-                            False)
-        self._build_sparsity_pattern(tl_A.sparsity_pattern())
+        im = IndexMap(comm, patches_dim_owned, 1)
+        im.set_local_to_global(local_to_global_patches)
+        tl_A = TensorLayout(comm, [im, im], 0,
+                            TensorLayout.Sparsity_SPARSE,
+                            TensorLayout.Ghosts_UNGHOSTED)
+        tl_b = TensorLayout(comm, [im], 0,
+                            TensorLayout.Sparsity_DENSE,
+                            TensorLayout.Ghosts_UNGHOSTED)
+        pattern = tl_A.sparsity_pattern()
+        pattern.init(comm, [im, im])
+        self._build_sparsity_pattern(pattern)
 
         # Init tensors
         self._A = A = PETScMatrix()
@@ -264,9 +261,7 @@ class FluxReconstructor(object):
         dof_mapping = self._dof_mapping
         patches_dim_offset = self._patches_dim_offset
         patches_dim_owned = self._patches_dim_owned
-        patches_dim_global = self._patches_dim_global
         local_to_global_patches = self._local_to_global_patches
-        off_process_owner = self._off_process_owner
 
         # Build inverse of local_to_global_patches
         # TODO: Can we preallocate dict? Or do it otherwise better?
@@ -281,14 +276,6 @@ class FluxReconstructor(object):
                 return global_to_local_patches_dict[global_patch_dof]
         global_to_local_patches = np.vectorize(global_to_local_patches,
                                                otypes=[la_index_dtype()])
-
-        # Initialize sparsity pattern
-        pattern.init(comm,
-            np.array(2*(patches_dim_global,), dtype='uintp'),
-            np.array(2*((patches_dim_offset, patches_dim_offset + patches_dim_owned), ), dtype='uintp'),
-            [local_to_global_patches, local_to_global_patches],
-            [off_process_owner, np.array((), dtype='intc')],
-            np.array((1, 1), dtype='uintp'))
 
         # Build sparsity pattern for mixed Laplacian
         for c in cells(mesh):
@@ -355,7 +342,7 @@ class FluxReconstructor(object):
         dofs_per_facet = dofmap.num_entity_dofs(tdim-1)
         dofs_per_cell = dofmap.num_entity_dofs(tdim)
         assert dofs_per_vertex == 0
-        num_dofs_with_ghosts = dofmap.local_dimension('all')
+        num_dofs_with_ghosts = dofmap.index_map().size(IndexMap.MapSize_ALL)
 
         # Local dimension of patch space
         patches_dim = tdim*dofs_per_facet*num_facets + (tdim + 1)*dofs_per_cell*num_cells
@@ -371,7 +358,7 @@ class FluxReconstructor(object):
         facet_dofs = [dofmap.tabulate_entity_dofs(tdim - 1, f)
                       for f in range(tdim + 1)]
         cell_dofs = dofmap.tabulate_entity_dofs(tdim, 0)
-        local_ownership_size = dofmap.local_dimension('owned')
+        local_ownership_size = dofmap.index_map().size(IndexMap.MapSize_OWNED)
         local_to_global = dofmap.local_to_global_index
         shared_nodes = dofmap.shared_nodes()
         shared_dofs = {r: {} for r in sorted(dofmap.neighbours())}
@@ -441,7 +428,7 @@ class FluxReconstructor(object):
                                 for r in sorted(shared_dofs.iterkeys())
                                 for v, data in shared_dofs[r].iteritems())
         sendbuf = np.fromiter(c, dtype=la_index_dtype())
-        num_shared_unowned = dofmap.local_dimension('unowned')
+        num_shared_unowned = dofmap.index_map().size(IndexMap.MapSize_UNOWNED)
         num_shared_owned = len(shared_nodes) - num_shared_unowned
         assert sendbuf.size == (2*tdim+1)*num_shared_owned
         recvbuf = np.empty((2*tdim+1)*num_shared_unowned, dtype=la_index_dtype())
@@ -466,9 +453,6 @@ class FluxReconstructor(object):
         comm.tompi4py().Alltoallv((sendbuf, (sendcounts, senddispls), la_index_mpitype()),
                                   (recvbuf, (recvcounts, recvdispls), la_index_mpitype()))
 
-        # Maps from unowned local patch dof to owning rank; Rp: ip' -> r
-        self._off_process_owner = off_process_owner \
-                = np.empty(patches_dim-patches_dim_owned, dtype='intc')
         # Maps from unowned local patch dof to global patch dof; Cp': ip' -> Ip
         self._local_to_global_patches = local_to_global_patches \
                 = np.empty(patches_dim-patches_dim_owned, dtype='uintp')
@@ -527,24 +511,21 @@ class FluxReconstructor(object):
                         dof_mapping[p][dof] = patch_dofs[k]
 
                         # Also construct (arbitrarily - as we have not defined
-                        # local patch indices so far) owner and local to global
-                        off_process_owner[dof_counter] = owner
+                        # local patch indices so far) local to global
                         local_to_global_patches[dof_counter] = patch_dofs[k]
 
                         dof_counter += 1
 
         assert dof_counter == patches_dim - patches_dim_owned
 
-        # TODO: Consider sorting (local_to_global_patches, off_process_owner)
+        # TODO: Consider sorting local_to_global_patches
         # TODO: validity of dof_mapping needs to be tested!
-
-        self._patches_dim_global = MPI.sum(comm, patches_dim_owned)
 
 
     def _clear(self):
         """Clears objects needed only for initialization of self."""
         # TODO: Remove this and hadle variables lifetime by proper scoping
-        del self._off_process_owner, self._local_to_global_patches
+        del self._local_to_global_patches
 
         # This is not really deleted now as it is referenced by tensor views
         del self._dof_mapping

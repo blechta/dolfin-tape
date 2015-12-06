@@ -45,9 +45,9 @@ for N in [2**i for i in xrange(2, 7)]:
                                         degree=6, domain=mesh)
 
     # Solve Stokes problem
-    V = VectorFunctionSpace(mesh, 'CG', 2)
-    Q = FunctionSpace(mesh, 'CG', 1)
-    W = V*Q
+    V = VectorElement('Lagrange', mesh.ufl_cell(), 2)
+    Q = FiniteElement('Lagrange', mesh.ufl_cell(), 1)
+    W = FunctionSpace(mesh, V*Q)
     u, p = TrialFunctions(W)
     v, q = TestFunctions(W)
     a = ( inner(grad(u), grad(v)) - p*div(v) - q*div(u) )*dx
@@ -97,7 +97,7 @@ for N in [2**i for i in xrange(2, 7)]:
 
     # Issue information and store results
     info_red('Estimator %g, energy_error %g' % (err_est, energy_error))
-    results.append((N, V.dim(), err_est, energy_error, t_flux_reconstructor))
+    results.append((N, W.dim(), err_est, energy_error, t_flux_reconstructor))
 
 results = np.array(results, dtype='float')
 
