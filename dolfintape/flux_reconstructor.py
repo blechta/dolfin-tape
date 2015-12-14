@@ -188,7 +188,6 @@ class FluxReconstructor(object):
         # https://bitbucket.org/petsc/petsc/issue/81
         if PETSc.Sys.getVersion() >= (3, 5, 3):
             solver.parameters['symmetric'] = True
-        solver.parameters['reuse_factorization'] = True
 
         # TODO: Does not work because PETScLUSolver::configure_ksp is called
         #       during PETScLUSolver::solve and setups the shift to
@@ -198,7 +197,8 @@ class FluxReconstructor(object):
         pc.setFactorShift('none', 0.0)
 
         # NOTE: The whole idea of getting rid of shift setup by DOLFIN
-        #       can be implemented directly in petsc4py without DOLFIN wrappers
+        #       can be implemented directly in petsc4py without DOLFIN wrappers.
+        #       See also https://bitbucket.org/fenics-project/dolfin/issues/608
 
 
     def _init_tensors(self):
