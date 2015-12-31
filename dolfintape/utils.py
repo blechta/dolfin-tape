@@ -19,7 +19,7 @@ from dolfin import la_index_dtype, compile_extension_module
 from mpi4py import MPI as MPI4py
 import numpy as np
 
-__all__ = ['la_index_mpitype', 'adapt']
+__all__ = ['la_index_mpitype', 'adapt', 'PETScVector_ipow', 'pow']
 
 def la_index_mpitype():
     """mpi4py type corresponding to dolfin::la_index."""
@@ -46,4 +46,36 @@ std::shared_ptr<MeshFunction<std::size_t>> adapt_wrapper(
 }
 """
 
-adapt = compile_extension_module(adapt_wrapper_code).adapt_wrapper;
+adapt = compile_extension_module(adapt_wrapper_code).adapt_wrapper
+
+
+pow_wrapper_code = """
+#include <petscvec.h>
+#include <dolfin/la/PETScVector.h>
+
+namespace dolfin {
+
+void PETScVector_pow(PETScVector& x, double p)
+{
+  dolfin_assert(x.vec());
+  PetscErrorCode ierr = VecPow(x.vec(), p);
+  if (ierr != 0) x.petsc_error(ierr, "utils.py", "VecPow");
+}
+}
+"""
+
+# Power inplace
+PETScVector_ipow = compile_extension_module(pow_wrapper_code).PETScVector_pow
+
+import __builtin__
+from dolfin import PETScVector
+# Power
+def pow(*args):
+    try:
+        return __builtin__.pow(*args)
+    except TypeError:
+        assert len(args) == 2 and isinstance(args[0], PETScVector)
+        x = PETScVector(args[0])
+        PETScVector_ipow(x, args[1])
+        return x
+pow.__doc__ = __builtin__.pow.__doc__ + "\n\n" + PETScVector_ipow.__doc__
