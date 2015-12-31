@@ -74,11 +74,12 @@ def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
     S_eps = (eps + inner(grad(u), grad(u)))**(0.5*p-1.0) * grad(u) + df
     v = TestFunction(V)
     F_eps = ( inner(S_eps, grad(v)) - f*v ) * dx
-    bc = DirichletBC(V, 0.0, lambda x, onb: onb)
+    bc = DirichletBC(V, exact_solution if exact_solution else 0.0,
+                     "on_boundary")
     solve(F_eps == 0, u, bc,
           solver_parameters={'newton_solver':
                                 {'maximum_iterations': 500,
-                                 'report': False}
+                                 'report': True}
                             })
 
     # Reconstruct flux q in H^p1(div) s.t.
@@ -127,18 +128,28 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
                             None if zero_guess else u, exact_solution)[0]
 
     # p-Laplacian flux of u
-    S = inner(grad(u), grad(u))**(0.5*p-1.0) * grad(u)
+    S = inner(grad(u), grad(u))**(0.5*Constant(p)-1.0) * grad(u)
 
     # Global lifting of W^{-1, p'} functional R = f + div(S)
     V_high = FunctionSpace(mesh, 'Lagrange', 4)
     r_glob = None
+    P0 = FunctionSpace(mesh, 'Discontinuous Lagrange', 0)
     for eps in epsilons[:6]:
         parameters['form_compiler']['quadrature_degree'] = 8
         r_glob = solve_p_laplace(p, eps, V_high, f, S,
                                  None if zero_guess else r_glob)[0]
         parameters['form_compiler']['quadrature_degree'] = -1
-        plot(r_glob)
+        dr_glob = project((grad(r_glob)**2)**Constant(0.5*p), P0)
+        N = mesh.topology().dim() + 1 # vertices per cell
+        dr_glob *= N
+        plot(dr_glob)
         r_norm_glob = sobolev_norm(r_glob, p)**(p/p1)
+        try:
+            e_norm = assemble(dr_glob*dx)
+            assert np.isclose(e_norm, N*r_norm_glob**p1)
+        except AssertionError:
+            info_red(r"||\nabla r||_p^p = %g, ||\nabla r||_p^p = %g"
+                    % (e_norm, N*r_norm_glob**p1))
         info_blue("||r|| = %g" % r_norm_glob)
 
     # Lower estimate on ||R|| using exact solution
@@ -149,9 +160,6 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
         r_norm_glob_low = assemble(action(R, u)-action(R, exact_solution)) \
                 / sobolev_norm(u - exact_solution, p)
         info_blue("||R|| >= %g" % r_norm_glob_low)
-
-    #interactive()
-
 
     # P1 lifting of local residuals
     P1 = V
@@ -182,7 +190,9 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
             cf[c] = 1
         submesh = SubMesh(mesh, cf, 1)
         V_loc = FunctionSpace(submesh, 'Lagrange', 4)
+        # FIXME: Control this adaptively!
         for eps in epsilons[:6]:
+        #for eps in epsilons[:4]:
             #parameters['form_compiler']['quadrature_degree'] = 4
             parameters['form_compiler']['quadrature_degree'] = 8
             r = solve_p_laplace(p, eps, V_loc, f, S)[0]
@@ -204,8 +214,8 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
         #plot(r, title='r_a')
         #plot(r, mesh=submesh, title='r_a')
         #plot(r, mesh=mesh, title='r_a')
-        #plot(r_loc_temp, title='r_a')
-        #plot(r_loc, title='\sum_a r_a')
+        plot(r_loc_temp, title='r_a')
+        plot(r_loc, title='\sum_a r_a')
         #interactive()
 
         # Lower estimate on ||R||_a using exact solution
@@ -283,7 +293,8 @@ class Extension(Expression):
 
 
 if __name__ == '__main__':
-    from dolfintape.demo_problems.exact_solutions import pLaplace_modes
+    from dolfintape.demo_problems.exact_solutions import pLaplace_modes, \
+            pLaplace_ChaillouSuri, pLaplace_CarstensenKlose
     from dolfintape.mesh_fixup import mesh_fixup
     import mshr
 
@@ -300,10 +311,17 @@ if __name__ == '__main__':
 
     #u, f = pLaplace_modes(p=11.0, eps=0.0, m=1, n=1, domain=mesh, degree=4)
     #solve_problem(11.0, [10.0**i for i in np.arange(1.0,  -6.0, -0.5)], mesh, f, u)
-    #u, f = pLaplace_modes(p=1.35, eps=0.0, m=1, n=1, domain=mesh, degree=4)
-    #solve_problem( 1.35, [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f, u)
-    #u, f = pLaplace_modes(p=1.1, eps=0.0, m=1, n=1, domain=mesh, degree=4)
-    #solve_problem( 1.1,  [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f, u, zero_guess=True)
+    #u, f = pLaplace_modes(p=2, eps=0.0, m=1, n=1, domain=mesh, degree=4)
+    #solve_problem( 1.35, [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f)
+    #u, f = pLaplace_modes(p=2, eps=0.0, m=1, n=1, domain=mesh, degree=4)
+    #solve_problem( 1.1,  [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f, zero_guess=True)
+
+    #p = 10.0
+    #u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
+    #solve_problem(p, [10.0**i for i in np.arange(0.0, -18.0, -2.0)], mesh, f, u, zero_guess=False)
+    #p = 1.5
+    #u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
+    #solve_problem(p, [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f, u, zero_guess=False)
     # -------------------------------------------------------------------------
 
     # -------------------------------------------------------------------------
@@ -317,8 +335,20 @@ if __name__ == '__main__':
     f = Expression("1.+cos(2.*pi*x[0])*sin(2.*pi*x[1])", domain=mesh, degree=2)
 
     #solve_problem(11.0,  [10.0**i for i in np.arange(1.0,  -6.0, -0.5)], mesh, f)
-    solve_problem( 1.35, [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f)
+    #solve_problem( 1.35, [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f)
     #solve_problem( 1.1,  [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f, zero_guess=True)
+
+    b0 = mshr.Rectangle(Point(-1.0, -1.0), Point(1.0, 1.0))
+    b1 = mshr.Rectangle(Point(0.0, -1.0), Point(1.0, 0.0))
+    mesh = mshr.generate_mesh(b0 - b1, 10)
+    #mesh = mshr.generate_mesh(b0 - b1, 40)
+    mesh = mesh_fixup(mesh)
+    p = 4.0
+    u, f = pLaplace_CarstensenKlose(p=p, eps=0.0, delta=7.0/8, domain=mesh, degree=4)
+    plot(u, mesh=mesh); plot(f, mesh=mesh)
+    f = project(f, FunctionSpace(mesh, 'CG', 4))
+    plot(f); interactive()
+    solve_problem(p, [10.0**i for i in np.arange(1.0,  -6.0, -0.5)], mesh, f, u)
     # -------------------------------------------------------------------------
 
     list_timings(TimingClear_keep, [TimingType_wall])

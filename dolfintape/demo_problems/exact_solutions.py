@@ -15,11 +15,12 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with dolfin-tape. If not, see <http://www.gnu.org/licenses/>.
 
-from sympy import Symbol, symbols, sin, pi, Matrix, diff, integrate
+from sympy import Symbol, symbols, sin, pi, Matrix, diff, integrate, \
+        sin, atan2, sqrt
 from sympy import ccode as sympy_ccode
-from dolfin import Expression
+from dolfin import Expression, FiniteElement
 
-__all__ = ["pLaplace_modes", "pStokes_vortices"]
+__all__ = ["pLaplace_modes", "pLaplace_ChaillouSuri", "pStokes_vortices"]
 
 
 ccode = lambda *args, **kwargs: sympy_ccode(*args, **kwargs).replace('M_PI', 'pi')
@@ -53,6 +54,39 @@ def pLaplace_modes(*args, **kwargs):
     return [Expression(u_code, *args, **kwargs),
             Expression(f_code, *args, **kwargs)]
 
+
+def pLaplace_ChaillouSuri(p, *args, **kwargs):
+    u_code = "(pow(0.5, p1) + pow((x[0]-0.5)*(x[0]-0.5)+(x[1]-0.5)*(x[1]-0.5), p1))/p1"
+    f_code = "2.0"
+    kwargs['p1'] = p/(p-1)
+
+    return [Expression(u_code, *args, **kwargs),
+            Expression(f_code, *args, **kwargs)]
+
+
+def pLaplace_CarstensenKlose(*args, **kwargs):
+    p = Symbol('p', positive=True, constant=True)
+    eps = Symbol('eps', nonnegative=True, constant=True)
+    delta = Symbol('delta', positive=True, constant=True)
+    x = symbols('x[0] x[1]', real=True)
+    r = sqrt(x[0]**2 + x[1]**2)
+    theta = pi + atan2(-x[1], -x[0])
+    u = r**delta * sin(delta*theta)
+    dim = len(x)
+    Du = Matrix([diff(u, x[j]) for j in xrange(dim)])
+    q = (eps + Du.norm(2)**2)**(p/2-1) * Du
+    f = -sum(diff(q[j], x[j]) for j in xrange(dim))
+
+    u_code = ccode(u)
+    f_code = ccode(f)
+    # Use Quadrature element as f is infinite at r=0
+    kwargs_f = kwargs.copy()
+    kwargs_f['element'] = FiniteElement('Quadrature',
+                                        kwargs_f['domain'].ufl_cell(),
+                                        kwargs_f.pop('degree'))
+
+    return [Expression(u_code, *args, **kwargs),
+            Expression(f_code, *args, **kwargs_f)]
 
 def pStokes_vortices(*args, **kwargs):
     """Returns 4-tuple of DOLFIN Expressions initialized with *args and
