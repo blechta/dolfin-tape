@@ -78,7 +78,8 @@ def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
                      "on_boundary")
     solve(F_eps == 0, u, bc,
           solver_parameters={'newton_solver':
-                                {'maximum_iterations': 500,
+                                {'maximum_iterations': 50,
+                                #{'maximum_iterations': 500,
                                  'report': True}
                             })
 
@@ -117,40 +118,72 @@ def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
     return u, Est_h, Est_eps, Est_tot, Est_up
 
 
+def solve_p_laplace_adaptive_eps(p, criterion, V, f, df, zero_guess=False,
+                                 exact_solution=None):
+    """Approximate p-Laplace problem with rhs of the form
+
+        (f, v) - (df, grad(v))  with test function v
+
+    on space V with initial Newton approximation u0. Compute adaptively
+    in regularization parameter eps and stop when
+
+        lambda Est_h, Est_eps, Est_tot, Est_up: bool
+
+    and return u."""
+    eps = 1.0
+    eps_decrease = 0.1**0.5
+    u = None
+    while True:
+        result = solve_p_laplace(p, eps, V, f, df,
+                                 u if not zero_guess else None,
+                                 exact_solution)
+        u, Est_h, Est_eps, Est_tot, Est_up = result
+        # FIXME: Consider adding local criterion
+        if criterion(Est_h, Est_eps, Est_tot, Est_up):
+            break
+        eps *= eps_decrease
+    return u
+
+
 def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
     p1 = p/(p-1) # Dual Lebesgue exponent
-    V = FunctionSpace(mesh, 'Lagrange', 1)
 
-    u = None
-    for eps in epsilons:
-        # TODO: No need for iteration if zero_guess
-        u = solve_p_laplace(p, eps, V, f, zero(mesh.geometry().dim()),
-                            None if zero_guess else u, exact_solution)[0]
+    # Get Galerkin approximation of p-Laplace problem -\Delta_p u = f
+    V = FunctionSpace(mesh, 'Lagrange', 1)
+    criterion = lambda Est_h, Est_eps, Est_tot, Est_up: \
+            Est_eps <= 0.001*Est_tot and Est_eps <= 0.001
+    u = solve_p_laplace_adaptive_eps(p, criterion, V, f,
+                                     zero(mesh.geometry().dim()), zero_guess,
+                                     exact_solution)
 
     # p-Laplacian flux of u
     S = inner(grad(u), grad(u))**(0.5*Constant(p)-1.0) * grad(u)
 
     # Global lifting of W^{-1, p'} functional R = f + div(S)
+    # Compute p-Laplace lifting on the patch on higher degree element
+    # FIXME: Consider adding spatial adaptivity to compute lifting
     V_high = FunctionSpace(mesh, 'Lagrange', 4)
-    r_glob = None
+    criterion = lambda Est_h, Est_eps, Est_tot, Est_up: \
+            Est_eps <= 0.001*Est_tot and Est_eps <= 0.001
+    parameters['form_compiler']['quadrature_degree'] = 8
+    r_glob = solve_p_laplace_adaptive_eps(p, criterion, V_high, f, S,
+                                          zero_guess)
+    parameters['form_compiler']['quadrature_degree'] = -1
+
+    # Compute cell-wise norm of global lifting
     P0 = FunctionSpace(mesh, 'Discontinuous Lagrange', 0)
-    for eps in epsilons[:6]:
-        parameters['form_compiler']['quadrature_degree'] = 8
-        r_glob = solve_p_laplace(p, eps, V_high, f, S,
-                                 None if zero_guess else r_glob)[0]
-        parameters['form_compiler']['quadrature_degree'] = -1
-        dr_glob = project((grad(r_glob)**2)**Constant(0.5*p), P0)
-        N = mesh.topology().dim() + 1 # vertices per cell
-        dr_glob.vector().__imul__(N)
-        plot(dr_glob)
-        r_norm_glob = sobolev_norm(r_glob, p)**(p/p1)
-        try:
-            e_norm = assemble(dr_glob*dx)
-            assert np.isclose(e_norm, N*r_norm_glob**p1)
-        except AssertionError:
-            info_red(r"||\nabla r||_p^p = %g, ||\nabla r||_p^p = %g"
-                    % (e_norm, N*r_norm_glob**p1))
-        info_blue(r"||\nabla r|| = %g" % r_norm_glob)
+    dr_glob = project((grad(r_glob)**2)**Constant(0.5*p), P0)
+    N = mesh.topology().dim() + 1 # vertices per cell
+    dr_glob.vector().__imul__(N)
+    plot(dr_glob)
+    r_norm_glob = sobolev_norm(r_glob, p)**(p/p1)
+    try:
+        e_norm = assemble(dr_glob*dx)
+        assert np.isclose(e_norm, N*r_norm_glob**p1)
+    except AssertionError:
+        info_red(r"||\nabla r||_p^p = %g, ||\nabla r||_p^p = %g"
+                % (e_norm, N*r_norm_glob**p1))
+    info_blue(r"||\nabla r|| = %g" % r_norm_glob)
 
     # Lower estimate on ||R|| using exact solution
     if exact_solution:
@@ -185,19 +218,20 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
     prg = Progress('Solving local liftings on patches', mesh.num_vertices())
 
     for v in vertices(mesh):
+        # Prepare submesh covering a patch
         cf.set_all(0)
         for c in cells(v):
             cf[c] = 1
         submesh = SubMesh(mesh, cf, 1)
+
+        # Compute p-Laplace lifting on the patch on higher degree element
+        # FIXME: Consider adding spatial adaptivity to compute lifting
         V_loc = FunctionSpace(submesh, 'Lagrange', 4)
-        # FIXME: Control this adaptively!
-        for eps in epsilons[:6]:
-        #for eps in epsilons[:4]:
-            #parameters['form_compiler']['quadrature_degree'] = 4
-            parameters['form_compiler']['quadrature_degree'] = 8
-            r = solve_p_laplace(p, eps, V_loc, f, S)[0]
-            parameters['form_compiler']['quadrature_degree'] = -1
-            #plot(r)
+        criterion = lambda Est_h, Est_eps, Est_tot, Est_up: \
+                Est_eps <= 0.001*Est_tot and Est_eps <= 0.001
+        parameters['form_compiler']['quadrature_degree'] = 8
+        r = solve_p_laplace_adaptive_eps(p, criterion, V_loc, f, S, zero_guess)
+        parameters['form_compiler']['quadrature_degree'] = -1
 
         # Compute local norm of residual
         r_norm_loc_a = sobolev_norm(r, p)**p
