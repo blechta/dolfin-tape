@@ -141,7 +141,7 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
         parameters['form_compiler']['quadrature_degree'] = -1
         dr_glob = project((grad(r_glob)**2)**Constant(0.5*p), P0)
         N = mesh.topology().dim() + 1 # vertices per cell
-        dr_glob *= N
+        dr_glob.vector().__imul__(N)
         plot(dr_glob)
         r_norm_glob = sobolev_norm(r_glob, p)**(p/p1)
         try:
@@ -150,7 +150,7 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
         except AssertionError:
             info_red(r"||\nabla r||_p^p = %g, ||\nabla r||_p^p = %g"
                     % (e_norm, N*r_norm_glob**p1))
-        info_blue("||r|| = %g" % r_norm_glob)
+        info_blue(r"||\nabla r|| = %g" % r_norm_glob)
 
     # Lower estimate on ||R|| using exact solution
     if exact_solution:
@@ -204,7 +204,7 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
         r_norm_loc += r_norm_loc_a
         scale = (mesh.topology().dim() + 1) / sum(c.volume() for c in cells(v))
         r_loc_p1_dofs[v2d[v.index()]] = r_norm_loc_a * scale
-        info_blue("||r_a|| = %g" % r_norm_loc_a)
+        info_blue(r"||\nabla r_a|| = %g" % r_norm_loc_a**(1.0/p))
 
         # Alternative local lifting
         r = Extension(r, domain=mesh, element=r.ufl_element())
@@ -346,7 +346,10 @@ if __name__ == '__main__':
     p = 4.0
     u, f = pLaplace_CarstensenKlose(p=p, eps=0.0, delta=7.0/8, domain=mesh, degree=4)
     plot(u, mesh=mesh); plot(f, mesh=mesh)
-    f = project(f, FunctionSpace(mesh, 'CG', 4))
+    # There are some problems with quadrature element,
+    # see https://bitbucket.org/fenics-project/ffc/issues/84,
+    # so project to Lagrange
+    f = project(f, FunctionSpace(mesh, 'Lagrange', 4))
     plot(f); interactive()
     solve_problem(p, [10.0**i for i in np.arange(1.0,  -6.0, -0.5)], mesh, f, u)
     # -------------------------------------------------------------------------
