@@ -145,7 +145,7 @@ def solve_p_laplace_adaptive_eps(p, criterion, V, f, df, zero_guess=False,
     return u
 
 
-def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
+def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     p1 = p/(p-1) # Dual Lebesgue exponent
 
     # Get Galerkin approximation of p-Laplace problem -\Delta_p u = f
@@ -205,7 +205,6 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
     # Alterative local lifting of residual
     # FIXME: Does this have a sense?
     r_norm_loc = 0.0
-    cf = CellFunction('size_t', mesh)
     #r_loc = Function(V)
     #r_loc_temp = Function(V)
     P4 = FunctionSpace(mesh, 'Lagrange', 4)
@@ -217,6 +216,7 @@ def solve_problem(p, epsilons, mesh, f, exact_solution=None, zero_guess=False):
     set_log_level(WARNING)
     prg = Progress('Solving local liftings on patches', mesh.num_vertices())
 
+    cf = CellFunction('size_t', mesh)
     for v in vertices(mesh):
         # Prepare submesh covering a patch
         cf.set_all(0)
@@ -344,18 +344,18 @@ if __name__ == '__main__':
     #mesh = mesh_fixup(mesh)
 
     #u, f = pLaplace_modes(p=11.0, eps=0.0, m=1, n=1, domain=mesh, degree=4)
-    #solve_problem(11.0, [10.0**i for i in np.arange(1.0,  -6.0, -0.5)], mesh, f, u)
+    #solve_problem(11.0, mesh, f, u)
     #u, f = pLaplace_modes(p=2, eps=0.0, m=1, n=1, domain=mesh, degree=4)
-    #solve_problem( 1.35, [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f)
+    #solve_problem(1.35, mesh, f)
     #u, f = pLaplace_modes(p=2, eps=0.0, m=1, n=1, domain=mesh, degree=4)
-    #solve_problem( 1.1,  [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f, zero_guess=True)
+    #solve_problem(1.1, mesh, f, zero_guess=True)
 
     #p = 10.0
     #u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
-    #solve_problem(p, [10.0**i for i in np.arange(0.0, -18.0, -2.0)], mesh, f, u, zero_guess=False)
+    solve_problem(p, mesh, f, u)
     #p = 1.5
     #u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
-    #solve_problem(p, [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f, u, zero_guess=False)
+    #solve_problem(p, mesh, f, u)
     # -------------------------------------------------------------------------
 
     # -------------------------------------------------------------------------
@@ -368,9 +368,9 @@ if __name__ == '__main__':
 
     f = Expression("1.+cos(2.*pi*x[0])*sin(2.*pi*x[1])", domain=mesh, degree=2)
 
-    #solve_problem(11.0,  [10.0**i for i in np.arange(1.0,  -6.0, -0.5)], mesh, f)
-    #solve_problem( 1.35, [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f)
-    #solve_problem( 1.1,  [10.0**i for i in np.arange(0.0, -22.0, -2.0)], mesh, f, zero_guess=True)
+    #solve_problem(11.0, mesh, f)
+    #solve_problem(1.35, mesh, f)
+    #solve_problem(1.1, mesh, f, zero_guess=True)
 
     b0 = mshr.Rectangle(Point(-1.0, -1.0), Point(1.0, 1.0))
     b1 = mshr.Rectangle(Point(0.0, -1.0), Point(1.0, 0.0))
@@ -385,7 +385,7 @@ if __name__ == '__main__':
     # so project to Lagrange
     f = project(f, FunctionSpace(mesh, 'Lagrange', 4))
     plot(f); interactive()
-    solve_problem(p, [10.0**i for i in np.arange(1.0,  -6.0, -0.5)], mesh, f, u)
+    solve_problem(p, mesh, f, u)
     # -------------------------------------------------------------------------
 
     list_timings(TimingClear_keep, [TimingType_wall])
