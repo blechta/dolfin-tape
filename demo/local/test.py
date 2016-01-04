@@ -38,6 +38,8 @@ not_working_in_parallel('This')
 # UFLACS issue #49
 #parameters['form_compiler']['representation'] = 'uflacs'
 
+#parameters['plotting_backend'] = 'matplotlib'
+
 
 class ReconstructorCache(dict):
     def __setitem__(self, key, value):
@@ -181,7 +183,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     dr_glob = project((grad(r_glob)**2)**Constant(0.5*p), P0)
     N = mesh.topology().dim() + 1 # vertices per cell
     dr_glob.vector().__imul__(N)
-    plot(dr_glob)
+    plot(dr_glob, title='P0 global lifting')
     r_norm_glob = sobolev_norm(r_glob, p)**(p/p1)
     try:
         e_norm = assemble(dr_glob*dx)
@@ -357,7 +359,6 @@ def test_CarstensenKlose(p):
     #mesh = mshr.generate_mesh(b0 - b1, 40)
     mesh = mesh_fixup(mesh)
 
-    p = 4.0
     u, f = pLaplace_CarstensenKlose(p=p, eps=0.0, delta=7.0/8,
                                     domain=mesh, degree=4)
     # There are some problems with quadrature element,
@@ -408,10 +409,12 @@ Default test cases:
 
     # Run the selected test
     try:
-        exec("test_%s(%s)" % tuple(argv[1:]))
+        exec("tester = test_%s" % argv[1])
     except NameError:
-        print ("'Test %s(%s)' does not exist!" % tuple(argv[1:]))
+        print ("'Test %s' does not exist!" % argv[1])
         return 1
+    else:
+        tester(float(argv[2]))
 
 
 if __name__ == '__main__':
