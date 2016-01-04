@@ -25,7 +25,7 @@ its residual in W^{-1,q} to demonstrate localization result of
 from __future__ import print_function
 
 from dolfin import *
-import ufl
+import ufl, ufc
 import numpy as np
 
 from dolfintape import FluxReconstructor, CellDiameters
@@ -192,6 +192,27 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
         info_red(r"||\nabla r||_p^p = %g, ||\nabla r||_p^p = %g"
                 % (e_norm, N*r_norm_glob**p1))
     info_blue(r"||\nabla r|| = %g" % r_norm_glob)
+
+    # Compute patch-wise norm of global lifting
+    P1 = V
+    assert P1.ufl_element().family() == 'Lagrange' \
+            and P1.ufl_element().degree() == 1
+    dr_glob_p1 = Function(P1)
+    dr_glob_p1_vec = dr_glob_p1.vector()
+    x = np.ndarray(mesh.geometry().dim())
+    val = np.ndarray(1)
+    c_ufc = ufc.cell() # FIXME: Is empty ufc cell sufficient?
+    v2d = vertex_to_dof_map(P1)
+    for c in cells(mesh):
+        dr_glob.eval(val, x, c, c_ufc)
+        for v in vertices(c):
+            # FIXME: it would be better to assemble vector once
+            vol_cell = c.volume()
+            vol_patch = sum(c.volume() for c in cells(v))
+            dof = v2d[v.index()]
+            dr_glob_p1_vec[dof] = dr_glob_p1_vec[dof][0] \
+                                + val[0]*vol_cell/vol_patch
+    plot(dr_glob_p1, title='P1 global lifting')
 
     # Lower estimate on ||R|| using exact solution
     if exact_solution:
