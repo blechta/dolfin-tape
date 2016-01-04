@@ -36,8 +36,10 @@ set_log_level(get_log_level()+(0 if MPI.rank(mpi_comm_world())==0 else 1))
 del set_log_level, get_log_level
 
 # Parse command-line options
-from dolfin import parameters
-parameters.parse()
+# FIXME: Automatic parsing temporarily commented out as it disallows parsing
+#        our own application specific parameters. Do we need it somewhere?
+#from dolfin import parameters
+#parameters.parse()
 
 # Enable info_{green,red,blue} on rank 0
 import ufl

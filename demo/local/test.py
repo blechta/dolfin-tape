@@ -22,6 +22,8 @@ its residual in W^{-1,q} to demonstrate localization result of
     norm for local a posteriori efficiency, in preparation, 2016.]
 """
 
+from __future__ import print_function
+
 from dolfin import *
 import ufl
 import numpy as np
@@ -30,7 +32,11 @@ from dolfintape import FluxReconstructor, CellDiameters
 from dolfintape.poincare import poincare_friedrichs_cutoff
 from dolfintape.hat_function import hat_function
 
+
 not_working_in_parallel('This')
+
+# UFLACS issue #49
+#parameters['form_compiler']['representation'] = 'uflacs'
 
 
 class ReconstructorCache(dict):
@@ -326,66 +332,88 @@ class Extension(Expression):
             assert not self._u.get_allow_extrapolation()
 
 
-if __name__ == '__main__':
-    from dolfintape.demo_problems.exact_solutions import pLaplace_modes, \
-            pLaplace_ChaillouSuri, pLaplace_CarstensenKlose
+def test_ChaillouSuri(p):
+    from dolfintape.demo_problems.exact_solutions import \
+            pLaplace_ChaillouSuri
+
+    mesh = UnitSquareMesh(5, 5, 'crossed')
+    #mesh = UnitSquareMesh(10, 10, 'crossed')
+    u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
+    solve_problem(p, mesh, f, u)
+
+    list_timings(TimingClear_clear, [TimingType_wall])
+
+
+def test_CarstensenKlose(p):
+    from dolfintape.demo_problems.exact_solutions import \
+            pLaplace_CarstensenKlose
     from dolfintape.mesh_fixup import mesh_fixup
     import mshr
 
-    # UFLACS issue #49
-    #parameters['form_compiler']['representation'] = 'uflacs'
-    #parameters['linear_algebra_backend'] = 'Eigen'
-
-    # -------------------------------------------------------------------------
-    # Tests on unit square
-    # -------------------------------------------------------------------------
-    mesh = UnitSquareMesh(5, 5, 'crossed')
-    #mesh = UnitSquareMesh(10, 10, 'crossed')
-    #mesh = mesh_fixup(mesh)
-
-    #u, f = pLaplace_modes(p=11.0, eps=0.0, m=1, n=1, domain=mesh, degree=4)
-    #solve_problem(11.0, mesh, f, u)
-    #u, f = pLaplace_modes(p=2, eps=0.0, m=1, n=1, domain=mesh, degree=4)
-    #solve_problem(1.35, mesh, f)
-    #u, f = pLaplace_modes(p=2, eps=0.0, m=1, n=1, domain=mesh, degree=4)
-    #solve_problem(1.1, mesh, f, zero_guess=True)
-
-    #p = 10.0
-    #u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
-    #solve_problem(p, mesh, f, u)
-    #p = 1.5
-    #u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
-    #solve_problem(p, mesh, f, u)
-    # -------------------------------------------------------------------------
-
-    # -------------------------------------------------------------------------
-    # Tests on L-shaped domain
-    # -------------------------------------------------------------------------
-    b0 = mshr.Rectangle(Point(0.0, 0.0), Point(0.5, 1.0))
-    b1 = mshr.Rectangle(Point(0.0, 0.0), Point(1.0, 0.5))
-    mesh = mshr.generate_mesh(b0 + b1, 10)
-    mesh = mesh_fixup(mesh)
-
-    f = Expression("1.+cos(2.*pi*x[0])*sin(2.*pi*x[1])", domain=mesh, degree=2)
-
-    #solve_problem(11.0, mesh, f)
-    #solve_problem(1.35, mesh, f)
-    #solve_problem(1.1, mesh, f, zero_guess=True)
-
+    # Build mesh on L-shaped domain (-1, 1)^2 \ (0, 1)*(-1, 0)
     b0 = mshr.Rectangle(Point(-1.0, -1.0), Point(1.0, 1.0))
     b1 = mshr.Rectangle(Point(0.0, -1.0), Point(1.0, 0.0))
     mesh = mshr.generate_mesh(b0 - b1, 10)
     #mesh = mshr.generate_mesh(b0 - b1, 40)
     mesh = mesh_fixup(mesh)
+
     p = 4.0
-    u, f = pLaplace_CarstensenKlose(p=p, eps=0.0, delta=7.0/8, domain=mesh, degree=4)
-    plot(u, mesh=mesh); plot(f, mesh=mesh)
+    u, f = pLaplace_CarstensenKlose(p=p, eps=0.0, delta=7.0/8,
+                                    domain=mesh, degree=4)
     # There are some problems with quadrature element,
     # see https://bitbucket.org/fenics-project/ffc/issues/84,
-    # so project to Lagrange
+    # so project to Lagrange element
     f = project(f, FunctionSpace(mesh, 'Lagrange', 4))
-    plot(f); interactive()
-    solve_problem(p, mesh, f, u)
-    # -------------------------------------------------------------------------
 
-    list_timings(TimingClear_keep, [TimingType_wall])
+    solve_problem(p, mesh, f, u)
+
+    list_timings(TimingClear_clear, [TimingType_wall])
+
+
+def main(argv):
+    default_tests = [
+            ('ChaillouSuri', 10.0),
+            ('ChaillouSuri', 1.5),
+            ('CarstensenKlose', 4.0),
+        ]
+
+    usage = """%s
+
+usage: python %s [-h|--help] [test-name p]
+
+Without arguments run default test cases. Or run test case with
+given value of p when given on command-line.
+
+Default test cases:
+
+%s
+""" % (__doc__, __file__, default_tests)
+
+    # Run all tests
+    if len(argv) == 1:
+        for test in default_tests:
+            exec('test_%s(%s)' % test)
+
+    # Print help
+    if argv[1] in ['-h', '--help']:
+        print(usage)
+        return
+
+    # Now expecting 2 arguments
+    if len(argv) != 3:
+        print("Command-line arguments not understood!")
+        print()
+        print(usage)
+        return 1
+
+    # Run the selected test
+    try:
+        exec("test_%s(%s)" % tuple(argv[1:]))
+    except NameError:
+        print ("'Test %s(%s)' does not exist!" % tuple(argv[1:]))
+        return 1
+
+
+if __name__ == '__main__':
+    import sys
+    sys.exit(main(sys.argv))
