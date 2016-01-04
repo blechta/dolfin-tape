@@ -82,16 +82,21 @@ class FluxReconstructor(object):
     def reconstruct(self, *rhs_coefficients):
         # TODO: Add docstring!
         # Assemble rhs color by color
+        t = Timer('dolfintape: assemble rhs for flux reconstruction')
         self._b.zero()
         for p in xrange(self._color_num):
             assemble(self.L(p, *rhs_coefficients), tensor=self._b_patches[p],
                      add_values=True, finalize_tensor=False)
         self._b.apply('add')
+        t.stop()
 
         # Solve the system
+        t = Timer('dolfintape: solve system for flux reconstruction')
         assert self._solver, "Solver has not been initialized yet."
         self._solver.solve(self._x, self._b)
+        t.stop()
 
+        t = Timer('dolfintape: collect patch-wise flux reconstruction')
         # Reuse function for holding result
         try:
             w = self._w
@@ -104,6 +109,7 @@ class FluxReconstructor(object):
         for x_p in self._x_patches:
             x_p.add_to_vector(w.vector())
         w.vector().apply('add')
+        t.stop()
 
         return w
 
@@ -115,6 +121,7 @@ class FluxReconstructor(object):
             cp[p][c] = 1 ... if c belongs to patch of color p
             cp[p][c] = 0 ... otherwise
         """
+        t = Timer('dolfintape: color patches')
         comm = mesh.mpi_comm()
 
         # TODO: Does Zoltan provide better coloring?
@@ -147,6 +154,8 @@ class FluxReconstructor(object):
             for c in cells(v):
                 cell_partitions[p][c] = 1
 
+        t.stop()
+
         return color_num, vertex_colors, cell_partitions
 
 
@@ -154,6 +163,8 @@ class FluxReconstructor(object):
         """Assembles flux reconstruction matrix on all the patches.
         The matrix is stored as self._A but accessed by assembler through
         matrix views self._A_patches[p] on patches of color p."""
+        t = Timer('dolfintape: assemble matrix for flux reconstruction')
+
         # Assemble matrix color by color
         # NOTE: assuming self._A is zeroed
         for p in xrange(self._color_num):
@@ -166,9 +177,13 @@ class FluxReconstructor(object):
             raise RuntimeError("_assemble_matrix can't be called twice!")
         self._assemble_matrix = lambda *args, **kwargs: on_second_call()
 
+        t.stop()
+
 
     def _setup_solver(self):
         """Initilize Cholesky solver for solving flux reconstruction."""
+        t = Timer('dolfintape: setup solver for flux reconstruction')
+
         # Diagnostic output
         #PETScOptions.set('mat_mumps_icntl_4', 3)
         #PETScOptions.set('mat_mumps_icntl_2', 6)
@@ -200,6 +215,8 @@ class FluxReconstructor(object):
         #       can be implemented directly in petsc4py without DOLFIN wrappers.
         #       See also https://bitbucket.org/fenics-project/dolfin/issues/608
 
+        t.stop()
+
 
     def _init_tensors(self):
         """Prepares matrix, rhs and solution vector for the system on patches
@@ -208,6 +225,8 @@ class FluxReconstructor(object):
         querying for solution. Local to global map and ghosts are not
         initialized for the system tensors as only indexing by global indices
         is used from Vector/MatrixView."""
+        t = Timer('dolfintape: init tensors for flux reconstruction')
+
         comm = self._mesh.mpi_comm()
         color_num = self._color_num
         patches_dim_owned = self._patches_dim_owned
@@ -251,8 +270,12 @@ class FluxReconstructor(object):
         self._x_patches = [VectorView(x, self._W.dim(), dof_mapping[p])
                            for p in xrange(color_num)]
 
+        t.stop()
+
 
     def _build_sparsity_pattern(self, pattern):
+        t = Timer('dolfintape: build sparsity for flux reconstruction')
+
         mesh = self._mesh
         comm = self._mesh.mpi_comm()
         cell_dofs_0 = self._W.sub(0).dofmap().cell_dofs
@@ -304,8 +327,12 @@ class FluxReconstructor(object):
                     pattern.insert_local([RT_dofs_patch_unowned, DG_dofs_patch])
         pattern.apply()
 
+        t.stop()
+
 
     def _build_dof_mapping(self, degree, vertex_colors):
+        t = Timer('dolfintape: build dofmap for flux reconstruction')
+
         mesh = self._mesh
         color_num = self._color_num
 
@@ -520,6 +547,8 @@ class FluxReconstructor(object):
 
         # TODO: Consider sorting local_to_global_patches
         # TODO: validity of dof_mapping needs to be tested!
+
+        t.stop()
 
 
     def _clear(self):

@@ -352,7 +352,7 @@ if __name__ == '__main__':
 
     #p = 10.0
     #u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
-    solve_problem(p, mesh, f, u)
+    #solve_problem(p, mesh, f, u)
     #p = 1.5
     #u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
     #solve_problem(p, mesh, f, u)
