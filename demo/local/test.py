@@ -323,17 +323,17 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
 
     N = mesh.topology().dim() + 1 # vertices per cell
     C_PF = poincare_friedrichs_cutoff(mesh, p)
-    ratio_a = r_norm_glob / ( N**(1.0/p) * C_PF * r_norm_loc )
-    ratio_b = r_norm_loc / ( N**(1.0/p1) * r_norm_glob )
+    ratio_a = ( N**(1.0/p) * C_PF * r_norm_loc ) / r_norm_glob
+    ratio_b = ( N**(1.0/p1) * r_norm_glob ) / r_norm_loc
     info_blue("C_{cont,PF} = %g" %  C_PF)
-    if ratio_a <= 1.0:
-        info_green("(3.7a) ok: lhs/rhs = %g <= 1" % ratio_a)
+    if ratio_a >= 1.0:
+        info_green("(3.7a) ok: rhs/lhs = %g >= 1" % ratio_a)
     else:
-        info_red("(3.7a) bad: lhs/rhs = %g > 1" % ratio_a)
-    if ratio_b <= 1.0:
-        info_green("(3.7b) ok: lhs/rhs = %g <= 1" % ratio_b)
+        info_red("(3.7a) bad: rhs/lhs = %g < 1" % ratio_a)
+    if ratio_b >= 1.0:
+        info_green("(3.7b) ok: rhs/lhs = %g >= 1" % ratio_b)
     else:
-        info_red("(3.7b) bad: lhs/rhs = %g > 1" % ratio_b)
+        info_red("(3.7b) bad: rhs/lhs = %g < 1" % ratio_b)
 
     #interactive()
 
