@@ -441,6 +441,7 @@ Default test cases:
     if len(argv) == 1:
         for test in default_tests:
             exec('test_%s(%s)' % test)
+            return
 
     # Print help
     if argv[1] in ['-h', '--help']:
@@ -462,6 +463,7 @@ Default test cases:
         return 1
     else:
         tester(float(argv[2]))
+        return
 
 
 if __name__ == '__main__':
