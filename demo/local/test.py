@@ -27,10 +27,12 @@ from __future__ import print_function
 from dolfin import *
 import ufl, ufc
 import numpy as np
+import matplotlib.pyplot as plt
 
 from dolfintape import FluxReconstructor, CellDiameters
 from dolfintape.poincare import poincare_friedrichs_cutoff
 from dolfintape.hat_function import hat_function
+from dolfintape.plotting import plot_alongside
 
 
 not_working_in_parallel('This')
@@ -38,7 +40,7 @@ not_working_in_parallel('This')
 # UFLACS issue #49
 #parameters['form_compiler']['representation'] = 'uflacs'
 
-#parameters['plotting_backend'] = 'matplotlib'
+parameters['plotting_backend'] = 'matplotlib'
 
 
 class ReconstructorCache(dict):
@@ -183,7 +185,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     dr_glob = project((grad(r_glob)**2)**Constant(0.5*p), P0)
     N = mesh.topology().dim() + 1 # vertices per cell
     dr_glob.vector().__imul__(N)
-    plot(dr_glob, title='P0 global lifting')
+    #plot(dr_glob, title='P0 global lifting')
     r_norm_glob = sobolev_norm(r_glob, p)**(p/p1)
     try:
         e_norm = assemble(dr_glob*dx)
@@ -212,7 +214,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
             dof = v2d[v.index()]
             dr_glob_p1_vec[dof] = dr_glob_p1_vec[dof][0] \
                                 + val[0]*vol_cell/vol_patch
-    plot(dr_glob_p1, title='P1 global lifting')
+    #plot(dr_glob_p1, title='P1 global lifting')
 
     # Lower estimate on ||R|| using exact solution
     if exact_solution:
@@ -274,12 +276,12 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
         r_loc_temp.interpolate(r)
         #project(r, V=r_loc_temp.function_space(), function=r_loc_temp, solver_type='lu')
         r_loc.vector()[:] += r_loc_temp.vector()
-        #plot(r, title='r_a')
-        #plot(r, mesh=submesh, title='r_a')
-        #plot(r, mesh=mesh, title='r_a')
-        plot(r_loc_temp, title='r_a')
-        plot(r_loc, title='\sum_a r_a')
-        #interactive()
+        ##plot(r, title='r_a')
+        ##plot(r, mesh=submesh, title='r_a')
+        ##plot(r, mesh=mesh, title='r_a')
+        #plot(r_loc_temp, title='r_a')
+        #plot(r_loc, title='\sum_a r_a')
+        ##interactive()
 
         # Lower estimate on ||R||_a using exact solution
         if exact_solution:
@@ -307,8 +309,8 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     set_log_level(old_log_level)
 
     r_norm_loc **= 1.0/p1
-    plot(r_loc, title='Alternative local lifting')
-    plot(r_loc_p1, title='P1 local lifting')
+    #plot(r_loc, title='Alternative local lifting')
+    #plot(r_loc_p1, title='P1 local lifting')
     try:
         e_norm = assemble(r_loc_p1*dx)
         assert np.isclose(e_norm, r_norm_loc**p1)
@@ -333,7 +335,9 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     else:
         info_red("(3.7b) bad: lhs/rhs = %g > 1" % ratio_b)
 
-    interactive()
+    #interactive()
+
+    return dr_glob_p1, r_loc_p1
 
 
 def sobolev_norm(u, p, domain=None):
@@ -359,12 +363,23 @@ def test_ChaillouSuri(p):
     from dolfintape.demo_problems.exact_solutions import \
             pLaplace_ChaillouSuri
 
-    mesh = UnitSquareMesh(5, 5, 'crossed')
-    #mesh = UnitSquareMesh(10, 10, 'crossed')
-    u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
-    solve_problem(p, mesh, f, u)
+    #for N in [5, 10, 20]:
+    for N in [5]:
 
-    list_timings(TimingClear_clear, [TimingType_wall])
+        mesh = UnitSquareMesh(N, N, 'crossed')
+        u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
+        glob, loc = solve_problem(p, mesh, f, u)
+
+        plot_alongside(glob, loc, mode="color", shading="flat", edgecolors="k")
+        plt.savefig("results/CS_f_%s_%s.pdf" % (p, N))
+        plot_alongside(glob, loc, mode="color", shading="gouraud")
+        plt.savefig("results/CS_g_%s_%s.pdf" % (p, N))
+        plot_alongside(glob, loc, mode="warp")
+        plt.savefig("results/CS_w_%s_%s.pdf" % (p, N))
+
+        list_timings(TimingClear_clear, [TimingType_wall])
+
+    interactive()
 
 
 def test_CarstensenKlose(p):
@@ -373,23 +388,34 @@ def test_CarstensenKlose(p):
     from dolfintape.mesh_fixup import mesh_fixup
     import mshr
 
+
     # Build mesh on L-shaped domain (-1, 1)^2 \ (0, 1)*(-1, 0)
     b0 = mshr.Rectangle(Point(-1.0, -1.0), Point(1.0, 1.0))
     b1 = mshr.Rectangle(Point(0.0, -1.0), Point(1.0, 0.0))
-    mesh = mshr.generate_mesh(b0 - b1, 10)
-    #mesh = mshr.generate_mesh(b0 - b1, 40)
-    mesh = mesh_fixup(mesh)
 
-    u, f = pLaplace_CarstensenKlose(p=p, eps=0.0, delta=7.0/8,
-                                    domain=mesh, degree=4)
-    # There are some problems with quadrature element,
-    # see https://bitbucket.org/fenics-project/ffc/issues/84,
-    # so project to Lagrange element
-    f = project(f, FunctionSpace(mesh, 'Lagrange', 4))
+    #for N in [5, 10, 20]:
+    for N in [5]:
 
-    solve_problem(p, mesh, f, u)
+        mesh = mshr.generate_mesh(b0 - b1, N)
+        mesh = mesh_fixup(mesh)
 
-    list_timings(TimingClear_clear, [TimingType_wall])
+        u, f = pLaplace_CarstensenKlose(p=p, eps=0.0, delta=7.0/8,
+                                        domain=mesh, degree=4)
+        # There are some problems with quadrature element,
+        # see https://bitbucket.org/fenics-project/ffc/issues/84,
+        # so project to Lagrange element
+        f = project(f, FunctionSpace(mesh, 'Lagrange', 4))
+
+        glob, loc = solve_problem(p, mesh, f, u)
+
+        plot_alongside(glob, loc, mode="color", shading="flat", edgecolors="k")
+        plt.savefig("results/CK_f_%s_%s.pdf" % (p, N))
+        plot_alongside(glob, loc, mode="color", shading="gouraud")
+        plt.savefig("results/CK_g_%s_%s.pdf" % (p, N))
+        plot_alongside(glob, loc, mode="warp")
+        plt.savefig("results/CK_w_%s_%s.pdf" % (p, N))
+
+        list_timings(TimingClear_clear, [TimingType_wall])
 
 
 def main(argv):
