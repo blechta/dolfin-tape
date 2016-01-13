@@ -15,7 +15,10 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with dolfin-tape. If not, see <http://www.gnu.org/licenses/>.
 
-from dolfin import compile_extension_module, Form, assemble
+from dolfin import compile_extension_module, assemble
+from dolfin.fem.assembling import _create_dolfin_form
+import ufl
+
 import os
 
 __all__ = ['MatrixView', 'VectorView', 'assemble']
@@ -43,10 +46,12 @@ def _assemble_decorator(assemble_function):
     def decorated_assemble(*args, **kwargs):
         tensor = kwargs.get('tensor')
         if isinstance(tensor, (VectorView, MatrixView)):
-            [tensor.resize_work_array(dim,
-                args[0].arguments()[dim].function_space().dofmap().max_cell_dimension())
-                for dim in range(Form(args[0]).rank())]
-        return assemble_function(*args, **kwargs)
+            form = _create_dolfin_form(args[0], kwargs.pop("form_compiler_parameters", None))
+            spaces = form.function_spaces
+            for i in range(len(spaces)):
+                dim = spaces[i].dofmap().max_cell_dimension()
+                tensor.resize_work_array(i, dim)
+        return assemble_function(form, *args[1:], **kwargs)
     return decorated_assemble
 
 
