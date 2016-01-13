@@ -15,7 +15,14 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with dolfin-tape. If not, see <http://www.gnu.org/licenses/>.
 
-from dolfin import Expression, FiniteElement
+"""This module provides cell diameter on simplicial mesh.
+The module must be imported collectively on COMM_WORLD!
+"""
+
+from dolfin import Expression, FiniteElement, compile_expressions
+from dolfin.functions.expression import create_compiled_expression_class
+
+from dolfintape.poincare import _is_simplex
 
 __all__ = ['CellDiameters']
 
@@ -23,12 +30,13 @@ __all__ = ['CellDiameters']
 def CellDiameters(mesh):
     """Returns piece-wise constant Expression defined as cell diameter,
     i.e. maximum edge length for simplices."""
+    assert _is_simplex(mesh.type())
     element = FiniteElement('Discontinuous Lagrange', mesh.ufl_cell(), 0)
-    e = Expression(cell_diameters_cpp_code, element=element, domain=mesh)
+    e = _cell_diameters_base_class(None, element=element, domain=mesh)
     return e
 
 
-cell_diameters_cpp_code="""
+_cell_diameters_cpp_code="""
 #include <dolfin/mesh/Edge.h>
 
 namespace dolfin {
@@ -52,3 +60,26 @@ namespace dolfin {
 
 }
 """
+
+def _create_cell_diameters_base_class():
+    """This functions builds PyDOLFIN compiled expression representing
+    the cell diameters. An instance can be created as usual.
+
+    The purpose of this procedure, contrary to usual
+
+        Expression(cppcode, **kwargs)
+
+    is to avoid JIT chain on dynamic class creation which may be too
+    expensive in hot loops.
+
+    NOTE: This function is collective on COMM_WORLD
+          (trough compile_expressions).
+    """
+    cpp_base, members = compile_expressions([_cell_diameters_cpp_code])
+    cpp_base, members = cpp_base[0], members[0]
+    assert len(members) == 0
+    base = create_compiled_expression_class(cpp_base)
+    return base
+
+_cell_diameters_base_class = _create_cell_diameters_base_class()
+del _create_cell_diameters_base_class
