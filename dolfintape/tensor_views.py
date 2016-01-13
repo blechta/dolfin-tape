@@ -17,8 +17,8 @@
 
 from dolfin import compile_extension_module, assemble
 from dolfin.fem.assembling import _create_dolfin_form
-import ufl
 
+from functools import wraps
 import os
 
 __all__ = ['MatrixView', 'VectorView', 'assemble']
@@ -43,6 +43,7 @@ def _assemble_decorator(assemble_function):
     Matrix/VectorView. It merely checks maximal cell dimension of underlying
     dofmaps in supplied forms and resizes work arrays of tensor views
     appropriately."""
+    @wraps(assemble_function)
     def decorated_assemble(*args, **kwargs):
         tensor = kwargs.get('tensor')
         if isinstance(tensor, (VectorView, MatrixView)):
