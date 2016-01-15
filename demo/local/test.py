@@ -28,11 +28,13 @@ from dolfin import *
 import ufl, ufc
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 from dolfintape import FluxReconstructor, CellDiameters
 from dolfintape.poincare import poincare_friedrichs_cutoff
 from dolfintape.hat_function import hat_function
 from dolfintape.plotting import plot_alongside
+from dolfintape.utils import mkdir_p
 
 
 not_working_in_parallel('This')
@@ -360,8 +362,7 @@ class Extension(Expression):
 
 
 def test_ChaillouSuri(p):
-    from dolfintape.demo_problems.exact_solutions import \
-            pLaplace_ChaillouSuri
+    from dolfintape.demo_problems.exact_solutions import pLaplace_ChaillouSuri
 
     #for N in [5, 10, 20]:
     for N in [5]:
@@ -370,21 +371,12 @@ def test_ChaillouSuri(p):
         u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
         glob, loc = solve_problem(p, mesh, f, u)
 
-        plot_alongside(glob, loc, mode="color", shading="flat", edgecolors="k")
-        plt.savefig("results/CS_f_%s_%s.pdf" % (p, N))
-        plot_alongside(glob, loc, mode="color", shading="gouraud")
-        plt.savefig("results/CS_g_%s_%s.pdf" % (p, N))
-        plot_alongside(glob, loc, mode="warp")
-        plt.savefig("results/CS_w_%s_%s.pdf" % (p, N))
-
+        plot_liftings(glob, loc, 'ChaillouSuri_%s_%s' % (p, N))
         list_timings(TimingClear_clear, [TimingType_wall])
-
-    interactive()
 
 
 def test_CarstensenKlose(p):
-    from dolfintape.demo_problems.exact_solutions import \
-            pLaplace_CarstensenKlose
+    from dolfintape.demo_problems.exact_solutions import pLaplace_CarstensenKlose
     from dolfintape.mesh_fixup import mesh_fixup
     import mshr
 
@@ -408,14 +400,19 @@ def test_CarstensenKlose(p):
 
         glob, loc = solve_problem(p, mesh, f, u)
 
-        plot_alongside(glob, loc, mode="color", shading="flat", edgecolors="k")
-        plt.savefig("results/CK_f_%s_%s.pdf" % (p, N))
-        plot_alongside(glob, loc, mode="color", shading="gouraud")
-        plt.savefig("results/CK_g_%s_%s.pdf" % (p, N))
-        plot_alongside(glob, loc, mode="warp")
-        plt.savefig("results/CK_w_%s_%s.pdf" % (p, N))
-
+        plot_liftings(glob, loc, 'CarstensenKlose_%s_%s' % (p, N))
         list_timings(TimingClear_clear, [TimingType_wall])
+
+
+def plot_liftings(glob, loc, prefix):
+    path = "results"
+    mkdir_p(path)
+    plot_alongside(glob, loc, mode="color", shading="flat", edgecolors="k")
+    plt.savefig(os.path.join(path, prefix+"f.pdf"))
+    plot_alongside(glob, loc, mode="color", shading="gouraud")
+    plt.savefig(os.path.join(path, prefix+"g.pdf"))
+    plot_alongside(glob, loc, mode="warp")
+    plt.savefig(os.path.join(path, prefix+"w.pdf"))
 
 
 def main(argv):
