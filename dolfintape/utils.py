@@ -18,6 +18,7 @@
 from dolfin import la_index_dtype, compile_extension_module
 from mpi4py import MPI as MPI4py
 import numpy as np
+import os, errno
 
 __all__ = ['la_index_mpitype', 'adapt', 'PETScVector_ipow', 'pow']
 
@@ -79,3 +80,12 @@ def pow(*args):
         PETScVector_ipow(x, args[1])
         return x
 pow.__doc__ = __builtin__.pow.__doc__ + "\n\n" + PETScVector_ipow.__doc__
+
+
+def mkdir_p(name):
+    """$ mkdir -p name"""
+    try:
+        os.mkdir(name)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise e
