@@ -60,6 +60,9 @@ class ReconstructorCache(dict):
 reconstructor_cache = ReconstructorCache()
 
 
+boundary = CompiledSubDomain("on_boundary")
+
+
 def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
     """Approximate (p, eps)-Laplace problem with rhs of the form
 
@@ -86,8 +89,7 @@ def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
     S_eps = (eps + inner(grad(u), grad(u)))**(0.5*p-1.0) * grad(u) + df
     v = TestFunction(V)
     F_eps = ( inner(S_eps, grad(v)) - f*v ) * dx
-    bc = DirichletBC(V, exact_solution if exact_solution else 0.0,
-                     "on_boundary")
+    bc = DirichletBC(V, exact_solution if exact_solution else 0.0, boundary)
     solve(F_eps == 0, u, bc,
           solver_parameters={'newton_solver':
                                 {'maximum_iterations': 50,
