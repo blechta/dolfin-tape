@@ -67,8 +67,7 @@ def stats():
     return s
 
 def list_stats(clear_stats=False, clear_cache=False):
-    print(80*"=")
-    print(os.linesep+"DFC stats:"+os.linesep+80*"-")
+    print(80*"="+os.linesep+"DFC stats:"+os.linesep+80*"-")
     pprint(stats())
     print(80*"=")
     clear(clear_stats, clear_cache)

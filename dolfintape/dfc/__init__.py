@@ -29,6 +29,11 @@ FEniCS form compiler in DOLFIN. Usage:
     dolfin.parameters["form_compiler"]["name"] = "dolfintape"
     dolfin.parameters["form_compiler"]["spam"] = "eggs"
     ...
+
+NOTE: There is already memory caching mechanism in instant.cache.
+      This one is only slightly faster than the one in instant.
+      Moreover instant version works also for DOLFIN JIT code.
+FIXME: Consider removing this module.
 """
 
 import dolfintape
