@@ -63,6 +63,21 @@ class ReconstructorCache(dict):
 reconstructor_cache = ReconstructorCache()
 
 
+class FunctionSpaceCache(dict):
+    def __setitem__(self, key, value):
+        mesh, family, degree = key
+        dict.__setitem__(self, (mesh.id(), family, degree), value)
+    def __getitem__(self, key):
+        mesh, family, degree = key
+        try:
+            return dict.__getitem__(self, (mesh.id(), family, degree))
+        except KeyError:
+            self[key] = space = FunctionSpace(mesh, family, degree)
+            return space
+
+function_space_cache = FunctionSpaceCache()
+
+
 boundary = CompiledSubDomain("on_boundary")
 
 
@@ -103,13 +118,11 @@ def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
     # Reconstruct flux q in H^p1(div) s.t.
     #       q ~ -S
     #   div q ~ f
-    tic()
     reconstructor = reconstructor_cache[(V.mesh(), V.ufl_element().degree())]
     q = reconstructor.reconstruct(S, f).sub(0, deepcopy=False)
-    info_green('Flux reconstruction timing: %g seconds' % toc())
 
     # Compute error estimate using equilibrated stress reconstruction
-    v = TestFunction(FunctionSpace(mesh, 'Discontinuous Lagrange', 0))
+    v = TestFunction(function_space_cache[(mesh, 'Discontinuous Lagrange', 0)])
     h = CellDiameters(mesh)
     Cp = Constant(2.0*(0.5*p)**(1.0/p)) # Poincare estimates by [Chua, Wheeden 2006]
     est0 = assemble(((Cp*h*(f-div(q)))**2)**(0.5*p1)*v*dx)
