@@ -15,7 +15,9 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with dolfin-tape. If not, see <http://www.gnu.org/licenses/>.
 
-from dolfin import la_index_dtype, compile_extension_module
+from __future__ import print_function
+
+from dolfin import la_index_dtype, compile_extension_module, get_log_level
 from mpi4py import MPI as MPI4py
 import numpy as np
 import os, errno
@@ -89,3 +91,10 @@ def mkdir_p(name):
     except OSError as e:
         if e.errno != errno.EEXIST:
             raise e
+
+
+def logn(log_level, msg):
+    """Print message at given log level without appendding newline
+    """
+    if log_level >= get_log_level():
+        print(msg, end="")

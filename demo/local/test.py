@@ -34,7 +34,7 @@ from dolfintape import FluxReconstructor, CellDiameters
 from dolfintape.poincare import poincare_friedrichs_cutoff
 from dolfintape.hat_function import hat_function
 from dolfintape.plotting import plot_alongside
-from dolfintape.utils import mkdir_p
+from dolfintape.utils import mkdir_p, logn
 
 
 not_working_in_parallel('This')
@@ -59,7 +59,6 @@ class ReconstructorCache(dict):
         except KeyError:
             self[key] = reconstructor = FluxReconstructor(mesh, degree)
             return reconstructor
-
 reconstructor_cache = ReconstructorCache()
 
 
@@ -74,7 +73,6 @@ class FunctionSpaceCache(dict):
         except KeyError:
             self[key] = space = FunctionSpace(mesh, family, degree)
             return space
-
 function_space_cache = FunctionSpaceCache()
 
 
@@ -111,8 +109,7 @@ def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
     solve(F_eps == 0, u, bc,
           solver_parameters={'newton_solver':
                                 {'maximum_iterations': 50,
-                                #{'maximum_iterations': 500,
-                                 'report': True}
+                                 'report': False}
                             })
 
     # Reconstruct flux q in H^p1(div) s.t.
@@ -135,15 +132,16 @@ def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
     Est_h   = MPI.sum( mesh.mpi_comm(), (est_h  **p1).sum() )**(1.0/p1)
     Est_eps = MPI.sum( mesh.mpi_comm(), (est_eps**p1).sum() )**(1.0/p1)
     Est_tot = MPI.sum( mesh.mpi_comm(), (est_tot**p1).sum() )**(1.0/p1)
-    info_blue('Error estimates: overall %g, discretization %g, regularization %g'
-              % (Est_tot, Est_h, Est_eps))
 
     if exact_solution:
         S_exact = ufl.replace(S, {u: exact_solution})
         Est_up = sobolev_norm(S-S_exact, p1)
-        info_blue('||R|| <= %g', Est_up)
     else:
         Est_up = None
+
+    log(18, 'Error estimates: overall %g, discretization %g, '
+            'regularization %g, estimate_up %s'
+            % (Est_tot, Est_h, Est_eps, Est_up))
 
     return u, Est_h, Est_eps, Est_tot, Est_up
 
@@ -163,7 +161,9 @@ def solve_p_laplace_adaptive_eps(p, criterion, V, f, df, zero_guess=False,
     eps = 1.0
     eps_decrease = 0.1**0.5
     u = None
+    logn(25, 'Adapting regularization')
     while True:
+        logn(25, '.')
         result = solve_p_laplace(p, eps, V, f, df,
                                  u if not zero_guess else None,
                                  exact_solution)
@@ -172,6 +172,7 @@ def solve_p_laplace_adaptive_eps(p, criterion, V, f, df, zero_guess=False,
         if criterion(Est_h, Est_eps, Est_tot, Est_up):
             break
         eps *= eps_decrease
+    log(25, '')
     return u
 
 
@@ -182,6 +183,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     V = FunctionSpace(mesh, 'Lagrange', 1)
     criterion = lambda Est_h, Est_eps, Est_tot, Est_up: \
             Est_eps <= 0.001*Est_tot and Est_eps <= 0.001
+    log(25, 'Computing residual of p-Laplace problem')
     u = solve_p_laplace_adaptive_eps(p, criterion, V, f,
                                      zero(mesh.geometry().dim()), zero_guess,
                                      exact_solution)
@@ -196,6 +198,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     criterion = lambda Est_h, Est_eps, Est_tot, Est_up: \
             Est_eps <= 0.001*Est_tot and Est_eps <= 0.001
     parameters['form_compiler']['quadrature_degree'] = 8
+    log(25, 'Computing global lifting of the resiual')
     r_glob = solve_p_laplace_adaptive_eps(p, criterion, V_high, f, S,
                                           zero_guess)
     parameters['form_compiler']['quadrature_degree'] = -1
@@ -213,7 +216,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     except AssertionError:
         info_red(r"||\nabla r||_p^p = %g, ||\nabla r||_p^p = %g"
                 % (e_norm, N*r_norm_glob**p1))
-    info_blue(r"||\nabla r|| = %g" % r_norm_glob)
+    info_blue(r"||\nabla r||_p = %g" % r_norm_glob)
 
     # Compute patch-wise norm of global lifting
     P1 = V
@@ -243,7 +246,8 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
         # FIXME: Possible cancellation due to underintegrating?!
         r_norm_glob_low = assemble(action(R, u)-action(R, exact_solution)) \
                 / sobolev_norm(u - exact_solution, p)
-        info_blue("||R|| >= %g" % r_norm_glob_low)
+        info_blue("||R||_{-1,q} >= %g (estimate using exact solution)"
+                  % r_norm_glob_low)
 
     # P1 lifting of local residuals
     P1 = V
@@ -289,7 +293,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
         r_norm_loc += r_norm_loc_a
         scale = (mesh.topology().dim() + 1) / sum(c.volume() for c in cells(v))
         r_loc_p1_dofs[v2d[v.index()]] = r_norm_loc_a * scale
-        info_blue(r"||\nabla r_a|| = %g" % r_norm_loc_a**(1.0/p))
+        log(18, r"||\nabla r_a||_p = %g" % r_norm_loc_a**(1.0/p))
 
         # Alternative local lifting
         r = Extension(r, domain=mesh, element=r.ufl_element())
@@ -318,7 +322,8 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
             R = lambda phi: ( inner(S, grad(phi)) - f*phi ) * dx(submesh)
             r_norm_loc_low = assemble(R(hat*u) - R(hat*exact_solution)) \
                     / sobolev_norm(hat*(u - exact_solution), p, submesh)
-            info_blue("||R||_a >= %g" % r_norm_loc_low)
+            log(18, r"||R||_{-1,q,\omega_a} >= %g (estimate using exact solution)"
+                    % r_norm_loc_low)
 
         # Advance progress bar
         set_log_level(PROGRESS)
@@ -338,7 +343,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
         info_red(r"||e||_q^q = %g, \sum_a ||\nabla r_a||_p^p = %g"
                 % (e_norm, r_norm_loc**p1))
 
-    info_blue(r"||\nabla r||_p^(p-1) = %g, ( \sum_a ||\nabla r_a||_p^p )^(1/q) = %g"
+    info_blue(r"||\nabla r||_p^{p-1} = %g, ( \sum_a ||\nabla r_a||_p^p )^{1/q} = %g"
               % (r_norm_glob, r_norm_loc))
 
     N = mesh.topology().dim() + 1 # vertices per cell
@@ -453,6 +458,9 @@ Default test cases:
 
 %s
 """ % (__doc__, __file__, default_tests)
+
+    # Decrease verbosity of DOLFIN
+    set_log_level(21)
 
     # Run all tests
     if len(argv) == 1:

@@ -15,10 +15,13 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with dolfin-tape. If not, see <http://www.gnu.org/licenses/>.
 
+from functools import wraps
+
 from dolfin import Mesh, Cell, Vertex, cells, facets, edges, vertices, \
-        warning, pi, not_working_in_parallel, CellType
+        pi, not_working_in_parallel, CellType, Event, get_log_level, set_log_level, INFO
 
 from dolfintape.hat_function import hat_function_grad
+
 
 __all__ = ['poincare_const', 'friedrichs_const', 'poincare_friedrichs_cutoff']
 
@@ -49,7 +52,7 @@ def poincare_const(o, p, d=1):
                 for c0 in cells(o) for v0 in vertices(c0)
                 for c1 in cells(o) for v1 in vertices(c1))
         # FIXME: Implement a check for convexity of the patch
-        warning("Assuming convex patch for computation of Poincare const!")
+        _warn_poincare_convex()
         return h*_poincare_convex(p)
 
     raise NotImplementedError
@@ -63,10 +66,32 @@ def friedrichs_const(o, p):
                 for c0 in cells(o) for v0 in vertices(c0)
                 for c1 in cells(o) for v1 in vertices(c1))
         # FIXME: Implement the check
-        warning("Friedrichs: assuming zero boundary of patch visible from any point!")
+        _warn_friedrichs_lines()
         return d
 
     raise NotImplementedError
+
+
+def _change_log_level(log_level, function):
+    """This decorator wraps function with temporary change to given log level.
+    """
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        old_level = get_log_level()
+        set_log_level(log_level)
+        function(*args, **kwargs)
+        set_log_level(old_level)
+    return wrapped
+
+# Event works only when log level <= INFO; we need more
+Event.__call__ = _change_log_level(INFO, Event.__call__)
+
+# Warnings with limited number of issues
+_warn_poincare_convex = Event(
+        "WARNING: Assuming convex patch for computation of Poincare const!")
+_warn_friedrichs_lines = Event(
+        "WARNING: Assuming zero boundary of patch visible from any point "
+        "for computation of Friedrichs const!")
 
 
 def poincare_friedrichs_cutoff(o, p):
