@@ -124,7 +124,7 @@ def jit_form(form, parameters=None):
         pass
 
     # Fallback to Instant
-    module = _load_module_instant(module_name, parameters)
+    module = _load_module_instant(module_name, form, parameters)
 
     # Construct instance of compiled form
     check_swig_version(module)
@@ -135,7 +135,7 @@ def jit_form(form, parameters=None):
     #FIXME: Should we cache compiled_form or just module?
     return dfc_store(module_name, (compiled_form, module, prefix))
 
-def _load_module_instant(module_name, parameters):
+def _load_module_instant(module_name, form, parameters):
     # Use Instant cache if possible
     cache_dir = parameters["cache_dir"] or None
     module = instant.import_module(module_name, cache_dir=cache_dir)
