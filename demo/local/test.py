@@ -1,4 +1,4 @@
-# Copyright (C) 2015 Jan Blechta
+# Copyright (C) 2015, 2016 Jan Blechta
 #
 # This file is part of dolfin-tape.
 #
@@ -98,7 +98,7 @@ def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
     dx = Measure('dx', domain=mesh)
 
     # Initial approximation for Newton
-    u = u0.copy(deepcopy=True) if u0 else Function(V)
+    u = u0.copy(deepcopy=False) if u0 else Function(V)
 
     # Problem formulation
     S = inner(grad(u), grad(u))**(0.5*p-1.0) * grad(u) + df
@@ -119,7 +119,8 @@ def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
     q = reconstructor.reconstruct(S, f).sub(0, deepcopy=False)
 
     # Compute error estimate using equilibrated stress reconstruction
-    v = TestFunction(function_space_cache[(mesh, 'Discontinuous Lagrange', 0)])
+    P0 = function_space_cache[(mesh, 'Discontinuous Lagrange', 0)]
+    v = TestFunction(P0)
     h = CellDiameters(mesh)
     Cp = Constant(2.0*(0.5*p)**(1.0/p)) # Poincare estimates by [Chua, Wheeden 2006]
     est0 = assemble(((Cp*h*(f-div(q)))**2)**(0.5*p1)*v*dx)
@@ -133,6 +134,12 @@ def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
     Est_eps = MPI.sum( mesh.mpi_comm(), (est_eps**p1).sum() )**(1.0/p1)
     Est_tot = MPI.sum( mesh.mpi_comm(), (est_tot**p1).sum() )**(1.0/p1)
 
+    # Wrap arrays as cell functions
+    est_h = vecarray_to_cellfunction(est_h, P0)
+    est_eps = vecarray_to_cellfunction(est_eps, P0)
+    est_tot = vecarray_to_cellfunction(est_tot, P0)
+
+    # Upper estimate using exact solution
     if exact_solution:
         S_exact = ufl.replace(S, {u: exact_solution})
         Est_up = sobolev_norm(S-S_exact, p1)
@@ -143,10 +150,10 @@ def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
             'regularization %g, estimate_up %s'
             % (Est_tot, Est_h, Est_eps, Est_up))
 
-    return u, Est_h, Est_eps, Est_tot, Est_up
+    return u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up
 
 
-def solve_p_laplace_adaptive_eps(p, criterion, V, f, df, zero_guess=False,
+def solve_p_laplace_adaptive_eps(p, criterion, u, f, df, zero_guess=False,
                                  exact_solution=None):
     """Approximate p-Laplace problem with rhs of the form
 
@@ -155,25 +162,63 @@ def solve_p_laplace_adaptive_eps(p, criterion, V, f, df, zero_guess=False,
     on space V with initial Newton approximation u0. Compute adaptively
     in regularization parameter eps and stop when
 
-        lambda Est_h, Est_eps, Est_tot, Est_up: bool
+        criterion = lambda Est_h, Est_eps, Est_tot, Est_up: bool
 
-    and return u."""
-    eps = 1.0
-    eps_decrease = 0.1**0.5
-    u = None
+    returns True. Return u and various estimators."""
+    # Initial parameters
+    #eps, eps_decrease = 1.0, 0.1**0.5
+    #eps, eps_decrease = 1e-3, 0.1**1.5
+    eps, eps_decrease = 1e-6, 0.1**0.5
+
     logn(25, 'Adapting regularization')
     while True:
         logn(25, '.')
-        result = solve_p_laplace(p, eps, V, f, df,
+        result = solve_p_laplace(p, eps, u.function_space(), f, df,
                                  u if not zero_guess else None,
                                  exact_solution)
-        u, Est_h, Est_eps, Est_tot, Est_up = result
-        # FIXME: Consider adding local criterion
-        if criterion(Est_h, Est_eps, Est_tot, Est_up):
+        u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
+        if criterion(0.0, Est_eps, Est_tot, Est_up):
             break
         eps *= eps_decrease
     log(25, '')
+    return result
+
+
+def solve_p_laplace_adaptive_mesh(p, criterion, V, f, df, zero_guess=False,
+                                  exact_solution=None):
+    """Approximate p-Laplace problem with rhs of the form
+
+        (f, v) - (df, grad(v))  with test function v
+
+    with initial Newton approximation u0. Start on space V and refine
+    adaptively mesh (where discretization estimator is large) and
+    regularization parameter epsilon until
+
+        criterion = lambda Est_h, Est_eps, Est_tot, Est_up: bool
+
+    returns True. Return u."""
+    u = Function(V)
+    while True:
+        logn(25, 'Adapting mesh (space dimension %s): ' % V.dim())
+        result = solve_p_laplace_adaptive_eps(p, criterion, u, f, df,
+                                 zero_guess, exact_solution)
+        u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
+
+        # Check convergence
+        if criterion(Est_h, Est_eps, Est_tot, Est_up):
+            break
+
+        # Refine mesh
+        markers = estimator_to_markers(est_h, p/(p-1.0))
+        log(22, 'Estimators h, eps, tot, up: %s' % (result[4:],))
+        log(22, 'Marked %s of %s cells for refinement'
+                % (sum(markers), markers.mesh().num_cells()))
+        mesh = adapt(V.mesh(), markers)
+        u = adapt(u, mesh)
+        V = u.function_space()
+
     return u
+
 
 
 def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
@@ -181,10 +226,9 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
 
     # Get Galerkin approximation of p-Laplace problem -\Delta_p u = f
     V = FunctionSpace(mesh, 'Lagrange', 1)
-    criterion = lambda Est_h, Est_eps, Est_tot, Est_up: \
-            Est_eps <= 0.001*Est_tot and Est_eps <= 0.001
+    criterion = lambda Est_h, Est_eps, Est_tot, Est_up: Est_eps <= 1e-6*Est_tot
     log(25, 'Computing residual of p-Laplace problem')
-    u = solve_p_laplace_adaptive_eps(p, criterion, V, f,
+    u = solve_p_laplace_adaptive_mesh(p, criterion, V, f,
                                      zero(mesh.geometry().dim()), zero_guess,
                                      exact_solution)
 
@@ -193,14 +237,15 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
 
     # Global lifting of W^{-1, p'} functional R = f + div(S)
     # Compute p-Laplace lifting on the patch on higher degree element
-    # FIXME: Consider adding spatial adaptivity to compute lifting
     V_high = FunctionSpace(mesh, 'Lagrange', 4)
     criterion = lambda Est_h, Est_eps, Est_tot, Est_up: \
-            Est_eps <= 0.001*Est_tot and Est_eps <= 0.001
+            Est_eps <= 0.01*Est_tot and Est_h <= 0.001
     parameters['form_compiler']['quadrature_degree'] = 8
     log(25, 'Computing global lifting of the resiual')
-    r_glob = solve_p_laplace_adaptive_eps(p, criterion, V_high, f, S,
+    u.set_allow_extrapolation(True)
+    r_glob = solve_p_laplace_adaptive_mesh(p, criterion, V_high, f, S,
                                           zero_guess)
+    u.set_allow_extrapolation(False)
     parameters['form_compiler']['quadrature_degree'] = -1
 
     # Compute cell-wise norm of global lifting
@@ -285,7 +330,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
         criterion = lambda Est_h, Est_eps, Est_tot, Est_up: \
                 Est_eps <= 0.001*Est_tot and Est_eps <= 0.001
         parameters['form_compiler']['quadrature_degree'] = 8
-        r = solve_p_laplace_adaptive_eps(p, criterion, V_loc, f, S, zero_guess)
+        r = solve_p_laplace_adaptive_mesh(p, criterion, V_loc, f, S, zero_guess)
         parameters['form_compiler']['quadrature_degree'] = -1
 
         # Compute local norm of residual
@@ -384,6 +429,40 @@ class Extension(Expression):
             assert not self._u.get_allow_extrapolation()
 
 
+def vecarray_to_cellfunction(arr, space, cf=None):
+    assert space.ufl_element().family() == "Discontinuous Lagrange"
+    assert space.ufl_element().degree() == 0
+    assert space.ufl_element().value_shape() == ()
+
+    if cf is None:
+        cf = CellFunction('double', space.mesh())
+    else:
+        assert isinstance(cf, CellFunctionDouble)
+
+    cell_dofs = space.dofmap().cell_dofs
+    for c in cells(space.mesh()):
+        cf[c] = arr[cell_dofs(c.index())[0]]
+
+    return cf
+
+def estimator_to_markers(est, p1, cf=None):
+    assert isinstance(est, CellFunctionDouble)
+
+    if cf is None:
+        cf = CellFunction('bool', est.mesh())
+    else:
+        assert isinstance(cf, CellFunctionBool)
+
+    norm = sum(abs(v)**p1 for v in est)
+    norm = MPI.sum(est.mesh().mpi_comm(), norm)
+    norm = (norm/est.mesh().num_cells())**(1.0/p1)
+
+    for c in cells(est.mesh()):
+        cf[c] = abs(est[c]) > norm
+
+    return cf
+
+
 def test_ChaillouSuri(p):
     from dolfintape.demo_problems.exact_solutions import pLaplace_ChaillouSuri
 
@@ -421,6 +500,7 @@ def test_CarstensenKlose(p):
         # see https://bitbucket.org/fenics-project/ffc/issues/84,
         # so project to Lagrange element
         f = project(f, FunctionSpace(mesh, 'Lagrange', 4))
+        f.set_allow_extrapolation(True)
 
         glob, loc = solve_problem(p, mesh, f, u)
 
@@ -460,7 +540,7 @@ Default test cases:
 """ % (__doc__, __file__, default_tests)
 
     # Decrease verbosity of DOLFIN
-    set_log_level(21)
+    set_log_level(25)
 
     # Run all tests
     if len(argv) == 1:
