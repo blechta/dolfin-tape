@@ -90,8 +90,15 @@ class FluxReconstructor(object):
         self._b.apply('add')
         t.stop()
 
+        # Check if it is first solve
+        if self.__dict__.get('_factored'):
+            task = 'solve (second)'
+        else:
+            task = 'solve (first)'
+            self._factored = True
+
         # Solve the system
-        t = Timer('dolfintape: solve system for flux reconstruction')
+        t = Timer('dolfintape: %s system for flux reconstruction' % task)
         assert self._solver, "Solver has not been initialized yet."
         self._solver.solve(self._x, self._b)
         t.stop()
