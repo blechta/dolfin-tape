@@ -162,13 +162,15 @@ def solve_p_laplace_adaptive_eps(p, criterion, u, f, df, zero_guess=False,
     on space V with initial Newton approximation u0. Compute adaptively
     in regularization parameter eps and stop when
 
-        criterion = lambda Est_h, Est_eps, Est_tot, Est_up: bool
+        criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: bool
 
     returns True. Return u and various estimators."""
     # Initial parameters
+    # FIXME: Shouldn't we retain the state of eps from the previous
+    #        spatial adaptivity step?
     #eps, eps_decrease = 1.0, 0.1**0.5
-    #eps, eps_decrease = 1e-3, 0.1**1.5
-    eps, eps_decrease = 1e-6, 0.1**0.5
+    eps, eps_decrease = 1e-3, 0.1**1.5
+    #eps, eps_decrease = 1e-6, 0.1**0.5
 
     logn(25, 'Adapting regularization')
     while True:
@@ -177,7 +179,7 @@ def solve_p_laplace_adaptive_eps(p, criterion, u, f, df, zero_guess=False,
                                  u if not zero_guess else None,
                                  exact_solution)
         u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
-        if criterion(0.0, Est_eps, Est_tot, Est_up):
+        if criterion(None, Est_h, Est_eps, Est_tot, Est_up):
             break
         eps *= eps_decrease
     log(25, '')
@@ -194,7 +196,7 @@ def solve_p_laplace_adaptive_mesh(p, criterion, V, f, df, zero_guess=False,
     adaptively mesh (where discretization estimator is large) and
     regularization parameter epsilon until
 
-        criterion = lambda Est_h, Est_eps, Est_tot, Est_up: bool
+        criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: bool
 
     returns True. Return u."""
     u = Function(V)
@@ -205,13 +207,14 @@ def solve_p_laplace_adaptive_mesh(p, criterion, V, f, df, zero_guess=False,
         u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
 
         # Check convergence
-        if criterion(Est_h, Est_eps, Est_tot, Est_up):
+        if criterion(u, Est_h, Est_eps, Est_tot, Est_up):
             break
 
         # Refine mesh
-        markers = estimator_to_markers(est_h, p/(p-1.0))
-        log(22, 'Estimators h, eps, tot, up: %s' % (result[4:],))
-        log(22, 'Marked %s of %s cells for refinement'
+        markers = estimator_to_markers(est_h, p/(p-1.0), aggressivity=2.5)
+        log(25, 'Estimators h, eps, tot, up: %s' % (result[4:],))
+        log(25, '||u_h||_p^{p-1} = %s' % sobolev_norm(u, p)**(p-1.0))
+        log(25, 'Marked %s of %s cells for refinement'
                 % (sum(markers), markers.mesh().num_cells()))
         mesh = adapt(V.mesh(), markers)
         u = adapt(u, mesh)
@@ -226,7 +229,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
 
     # Get Galerkin approximation of p-Laplace problem -\Delta_p u = f
     V = FunctionSpace(mesh, 'Lagrange', 1)
-    criterion = lambda Est_h, Est_eps, Est_tot, Est_up: Est_eps <= 1e-6*Est_tot
+    criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: Est_eps <= 1e-6*Est_tot
     log(25, 'Computing residual of p-Laplace problem')
     u = solve_p_laplace_adaptive_mesh(p, criterion, V, f,
                                      zero(mesh.geometry().dim()), zero_guess,
@@ -237,16 +240,19 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
 
     # Global lifting of W^{-1, p'} functional R = f + div(S)
     # Compute p-Laplace lifting on the patch on higher degree element
-    V_high = FunctionSpace(mesh, 'Lagrange', 4)
-    criterion = lambda Est_h, Est_eps, Est_tot, Est_up: \
-            Est_eps <= 0.01*Est_tot and Est_h <= 0.001
-    parameters['form_compiler']['quadrature_degree'] = 8
+    # FIXME: Really need high-order space and high qudrature degree
+    #        when we have mesh adaptiviy in place?
+    #V_high = FunctionSpace(mesh, 'Lagrange', 4)
+    V_high = FunctionSpace(mesh, 'Lagrange', 2)
+    criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
+        Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-3*sobolev_norm(u_h, p)**(p-1.0)
+    #parameters['form_compiler']['quadrature_degree'] = 8
     log(25, 'Computing global lifting of the resiual')
     u.set_allow_extrapolation(True)
     r_glob = solve_p_laplace_adaptive_mesh(p, criterion, V_high, f, S,
                                           zero_guess)
     u.set_allow_extrapolation(False)
-    parameters['form_compiler']['quadrature_degree'] = -1
+    #parameters['form_compiler']['quadrature_degree'] = -1
 
     # Compute cell-wise norm of global lifting
     P0 = FunctionSpace(mesh, 'Discontinuous Lagrange', 0)
@@ -327,7 +333,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
         # Compute p-Laplace lifting on the patch on higher degree element
         # FIXME: Consider adding spatial adaptivity to compute lifting
         V_loc = FunctionSpace(submesh, 'Lagrange', 4)
-        criterion = lambda Est_h, Est_eps, Est_tot, Est_up: \
+        criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
                 Est_eps <= 0.001*Est_tot and Est_eps <= 0.001
         parameters['form_compiler']['quadrature_degree'] = 8
         r = solve_p_laplace_adaptive_mesh(p, criterion, V_loc, f, S, zero_guess)
@@ -411,6 +417,8 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
 
 
 def sobolev_norm(u, p, domain=None):
+    if u is None:
+        return np.infty
     p = Constant(p) if p is not 2 else p
     dX = dx(domain)
     return assemble(inner(grad(u), grad(u))**(p/2)*dX)**(1.0/float(p))
@@ -445,7 +453,7 @@ def vecarray_to_cellfunction(arr, space, cf=None):
 
     return cf
 
-def estimator_to_markers(est, p1, cf=None):
+def estimator_to_markers(est, p1, cf=None, aggressivity=1.0):
     assert isinstance(est, CellFunctionDouble)
 
     if cf is None:
@@ -458,7 +466,7 @@ def estimator_to_markers(est, p1, cf=None):
     norm = (norm/est.mesh().num_cells())**(1.0/p1)
 
     for c in cells(est.mesh()):
-        cf[c] = abs(est[c]) > norm
+        cf[c] = abs(est[c]) > aggressivity*norm
 
     return cf
 
@@ -505,6 +513,7 @@ def test_CarstensenKlose(p):
         glob, loc = solve_problem(p, mesh, f, u)
 
         plot_liftings(glob, loc, 'CarstensenKlose_%s_%s' % (p, N))
+        set_log_level(INFO) # FIXME: Remove me!
         list_timings(TimingClear_clear, [TimingType_wall])
         dolfintape.dfc.cache.list_stats(clear_cache=True, clear_stats=True)
 
