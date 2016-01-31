@@ -142,7 +142,7 @@ def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
     # Upper estimate using exact solution
     if exact_solution:
         S_exact = ufl.replace(S, {u: exact_solution})
-        Est_up = sobolev_norm(S-S_exact, p1)
+        Est_up = sobolev_norm(S-S_exact, p1, k=0)
     else:
         Est_up = None
 
@@ -206,14 +206,18 @@ def solve_p_laplace_adaptive_mesh(p, criterion, V, f, df, zero_guess=False,
                                  zero_guess, exact_solution)
         u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
 
+        # HACK: Drop unneeded data
+        reconstructor_cache.clear()
+        function_space_cache.clear()
+
         # Check convergence
+        log(25, 'Estimators h, eps, tot, up: %s' % (result[4:],))
+        log(25, r'||\nabla u_h||_p^{p-1} = %s' % sobolev_norm(u, p)**(p-1.0))
         if criterion(u, Est_h, Est_eps, Est_tot, Est_up):
             break
 
         # Refine mesh
         markers = estimator_to_markers(est_h, p/(p-1.0), aggressivity=2.5)
-        log(25, 'Estimators h, eps, tot, up: %s' % (result[4:],))
-        log(25, '||u_h||_p^{p-1} = %s' % sobolev_norm(u, p)**(p-1.0))
         log(25, 'Marked %s of %s cells for refinement'
                 % (sum(markers), markers.mesh().num_cells()))
         mesh = adapt(V.mesh(), markers)
@@ -221,7 +225,6 @@ def solve_p_laplace_adaptive_mesh(p, criterion, V, f, df, zero_guess=False,
         V = u.function_space()
 
     return u
-
 
 
 def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
@@ -246,28 +249,28 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     V_high = FunctionSpace(mesh, 'Lagrange', 2)
     criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
         Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-3*sobolev_norm(u_h, p)**(p-1.0)
-    #parameters['form_compiler']['quadrature_degree'] = 8
+    parameters['form_compiler']['quadrature_degree'] = 8
     log(25, 'Computing global lifting of the resiual')
     u.set_allow_extrapolation(True)
     r_glob = solve_p_laplace_adaptive_mesh(p, criterion, V_high, f, S,
                                           zero_guess)
     u.set_allow_extrapolation(False)
-    #parameters['form_compiler']['quadrature_degree'] = -1
+    parameters['form_compiler']['quadrature_degree'] = -1
 
     # Compute cell-wise norm of global lifting
-    P0 = FunctionSpace(mesh, 'Discontinuous Lagrange', 0)
-    dr_glob = project((grad(r_glob)**2)**Constant(0.5*p), P0)
-    N = mesh.topology().dim() + 1 # vertices per cell
-    dr_glob.vector().__imul__(N)
-    #plot(dr_glob, title='P0 global lifting')
+    dr_glob_fine, dr_glob_coarse = compute_cellwise_grad(r_glob, p)
     r_norm_glob = sobolev_norm(r_glob, p)**(p/p1)
     try:
-        e_norm = assemble(dr_glob*dx)
-        assert np.isclose(e_norm, N*r_norm_glob**p1)
+        e_norm_coarse = assemble(dr_glob_coarse*dx)
+        e_norm_fine = assemble(dr_glob_fine*dx)
+        N = mesh.topology().dim() + 1 # vertices per cell
+        assert np.isclose(e_norm_fine, N*r_norm_glob**p1)
+        assert np.isclose(e_norm_coarse, N*r_norm_glob**p1)
     except AssertionError:
-        info_red(r"||\nabla r||_p^p = %g, ||\nabla r||_p^p = %g"
-                % (e_norm, N*r_norm_glob**p1))
-    info_blue(r"||\nabla r||_p = %g" % r_norm_glob)
+        info_red(r"N*||\nabla r||_p^p = %g, %g, %g"
+                % (e_norm_coarse, e_norm_fine, N*r_norm_glob**p1))
+    else:
+        info_blue(r"||\nabla r||_p^{p-1} = %g" % r_norm_glob)
 
     # Compute patch-wise norm of global lifting
     P1 = V
@@ -280,7 +283,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     c_ufc = ufc.cell() # FIXME: Is empty ufc cell sufficient?
     v2d = vertex_to_dof_map(P1)
     for c in cells(mesh):
-        dr_glob.eval(val, x, c, c_ufc)
+        dr_glob_coarse.eval(val, x, c, c_ufc)
         for v in vertices(c):
             # FIXME: it would be better to assemble vector once
             vol_cell = c.volume()
@@ -319,7 +322,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
 
     # Adjust verbosity
     old_log_level = get_log_level()
-    set_log_level(WARNING)
+    #set_log_level(WARNING)
     prg = Progress('Solving local liftings on patches', mesh.num_vertices())
 
     cf = CellFunction('size_t', mesh)
@@ -334,7 +337,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
         # FIXME: Consider adding spatial adaptivity to compute lifting
         V_loc = FunctionSpace(submesh, 'Lagrange', 4)
         criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
-                Est_eps <= 0.001*Est_tot and Est_eps <= 0.001
+            Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-3*sobolev_norm(u_h, p)**(p-1.0)
         parameters['form_compiler']['quadrature_degree'] = 8
         r = solve_p_laplace_adaptive_mesh(p, criterion, V_loc, f, S, zero_guess)
         parameters['form_compiler']['quadrature_degree'] = -1
@@ -372,7 +375,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
             phi = TestFunction(V_loc)
             R = lambda phi: ( inner(S, grad(phi)) - f*phi ) * dx(submesh)
             r_norm_loc_low = assemble(R(hat*u) - R(hat*exact_solution)) \
-                    / sobolev_norm(hat*(u - exact_solution), p, submesh)
+                    / sobolev_norm(hat*(u - exact_solution), p, domain=submesh)
             log(18, r"||R||_{-1,q,\omega_a} >= %g (estimate using exact solution)"
                     % r_norm_loc_low)
 
@@ -416,12 +419,16 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     return dr_glob_p1, r_loc_p1
 
 
-def sobolev_norm(u, p, domain=None):
+def sobolev_norm(u, p, k=1, domain=None):
     if u is None:
         return np.infty
     p = Constant(p) if p is not 2 else p
     dX = dx(domain)
-    return assemble(inner(grad(u), grad(u))**(p/2)*dX)**(1.0/float(p))
+    if k == 1:
+        u = grad(u)
+    elif k != 0:
+        raise NotImplementedError
+    return assemble(inner(u, u)**(p/2)*dX)**(1.0/float(p))
 
 
 class Extension(Expression):
@@ -453,6 +460,7 @@ def vecarray_to_cellfunction(arr, space, cf=None):
 
     return cf
 
+
 def estimator_to_markers(est, p1, cf=None, aggressivity=1.0):
     assert isinstance(est, CellFunctionDouble)
 
@@ -468,7 +476,48 @@ def estimator_to_markers(est, p1, cf=None, aggressivity=1.0):
     for c in cells(est.mesh()):
         cf[c] = abs(est[c]) > aggressivity*norm
 
+    if sum(cf) == 0:
+        estimator_to_markers(est, p1, cf=cf, aggressivity=0.5*aggressivity)
+
     return cf
+
+
+def compute_cellwise_grad(r, p):
+    # Compute desired quantity accurately on fine mesh
+    mesh_fine = r.function_space().mesh()
+    P0_fine = FunctionSpace(mesh_fine, 'Discontinuous Lagrange', 0)
+    dr_fine = project((grad(r)**2)**Constant(0.5*p), P0_fine)
+
+    # Some scaling
+    N = mesh_fine.topology().dim() + 1 # vertices per cell
+    dr_fine.vector().__imul__(N)
+
+    # Compute parent cells from finest to coarsest
+    mesh = mesh_fine
+    tdim = mesh.topology().dim()
+    parent_cells = slice(None)
+    while mesh:
+        parent_cells = mesh.data().array('parent_cell', tdim)[parent_cells]
+        mesh = mesh.parent()
+
+    # Init coarse quantity
+    mesh_coarse = mesh_fine.root_node()
+    P0_coarse = FunctionSpace(mesh_coarse, 'Discontinuous Lagrange', 0)
+    dr_coarse = Function(P0_coarse)
+
+    # Fetch needed objects to speed-up the hot loop
+    dofs_fine = P0_fine.dofmap().cell_dofs
+    dofs_coarse = P0_coarse.dofmap().cell_dofs
+    x_fine = dr_fine.vector()
+    x_coarse = dr_coarse.vector()
+
+    # Reduce fine to coarse
+    for c in cells(mesh_fine):
+        i = c.index()
+        scale = c.volume()/Cell(mesh_coarse, parent_cells[i]).volume()
+        x_coarse[dofs_coarse(parent_cells[i])] += scale * x_fine[dofs_fine(i)]
+
+    return dr_fine, dr_coarse
 
 
 def test_ChaillouSuri(p):
