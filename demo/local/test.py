@@ -43,6 +43,7 @@ not_working_in_parallel('This')
 
 import dolfintape.dfc
 parameters['form_compiler']['name'] = 'dolfintape'
+parameters['form_compiler']['optimize'] = True
 
 parameters['plotting_backend'] = 'matplotlib'
 
