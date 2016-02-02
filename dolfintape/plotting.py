@@ -18,13 +18,19 @@
 from dolfin import *
 import numpy as np
 from six.moves import xrange as range
+import os
 
-import matplotlib.pyplot as plt
+# Use non-interactive matplotlib backend if needed
+noplot = os.environ.get("DOLFIN_NOPLOT", "0") != "0"
+display = os.environ.get("DISPLAY")
+if noplot or not display:
+    import matplotlib
+    matplotlib.use("Agg")
+
+from matplotlib import pyplot
 from mpl_toolkits.mplot3d import axes3d
 
-__all__ = ["plot_alongside"]
-
-parameters['plotting_backend'] = 'matplotlib' # FIXME: side effect!
+__all__ = ["plot_alongside", "pyplot"]
 
 
 def plot_alongside(*args, **kwargs):
@@ -49,17 +55,17 @@ def plot_alongside(*args, **kwargs):
 
     # Prepare figure
     n = len(args)
-    plt.figure(figsize=(4*n+2, 4))
+    pyplot.figure(figsize=(4*n+2, 4))
     projection = "3d" if kwargs.get("mode") == "warp" else None
 
     # Plot all arguments
     for i in range(n):
-        plt.subplot(1, n, i+1, projection=projection)
-        p = plot(args[i], **kwargs)
+        pyplot.subplot(1, n, i+1, projection=projection)
+        p = plot(args[i], backend="matplotlib", **kwargs)
 
-    plt.tight_layout()
+    pyplot.tight_layout()
 
     # Create colorbar
-    plt.subplots_adjust(right=0.8)
-    cbar_ax = plt.gcf().add_axes([0.85, 0.15, 0.05, 0.7])
-    plt.colorbar(p, cax=cbar_ax)
+    pyplot.subplots_adjust(right=0.8)
+    cbar_ax = pyplot.gcf().add_axes([0.85, 0.15, 0.05, 0.7])
+    pyplot.colorbar(p, cax=cbar_ax)

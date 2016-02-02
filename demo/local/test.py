@@ -27,13 +27,12 @@ from __future__ import print_function
 from dolfin import *
 import ufl, ufc
 import numpy as np
-import matplotlib.pyplot as plt
 import os
 
 from dolfintape import FluxReconstructor, CellDiameters
 from dolfintape.poincare import poincare_friedrichs_cutoff
 from dolfintape.hat_function import hat_function
-from dolfintape.plotting import plot_alongside
+from dolfintape.plotting import plot_alongside, pyplot
 from dolfintape.utils import mkdir_p, logn
 
 
@@ -571,11 +570,11 @@ def plot_liftings(glob, loc, prefix):
     path = "results"
     mkdir_p(path)
     plot_alongside(glob, loc, mode="color", shading="flat", edgecolors="k")
-    plt.savefig(os.path.join(path, prefix+"f.pdf"))
+    pyplot.savefig(os.path.join(path, prefix+"f.pdf"))
     plot_alongside(glob, loc, mode="color", shading="gouraud")
-    plt.savefig(os.path.join(path, prefix+"g.pdf"))
+    pyplot.savefig(os.path.join(path, prefix+"g.pdf"))
     plot_alongside(glob, loc, mode="warp")
-    plt.savefig(os.path.join(path, prefix+"w.pdf"))
+    pyplot.savefig(os.path.join(path, prefix+"w.pdf"))
 
 
 def main(argv):
