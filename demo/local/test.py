@@ -41,8 +41,6 @@ not_working_in_parallel('This')
 # UFLACS issue #49
 #parameters['form_compiler']['representation'] = 'uflacs'
 
-import dolfintape.dfc
-parameters['form_compiler']['name'] = 'dolfintape'
 parameters['form_compiler']['optimize'] = True
 
 parameters['plotting_backend'] = 'matplotlib'
@@ -523,7 +521,6 @@ def test_ChaillouSuri(p, N):
 
     plot_liftings(glob, loc, 'ChaillouSuri_%s_%s' % (p, N))
     list_timings(TimingClear_clear, [TimingType_wall])
-    dolfintape.dfc.cache.list_stats(clear_cache=True, clear_stats=True)
 
 
 def test_CarstensenKlose(p, N):
@@ -549,7 +546,6 @@ def test_CarstensenKlose(p, N):
 
     plot_liftings(glob, loc, 'CarstensenKlose_%s_%s' % (p, N))
     list_timings(TimingClear_clear, [TimingType_wall])
-    dolfintape.dfc.cache.list_stats(clear_cache=True, clear_stats=True)
 
 
 def main(argv):
