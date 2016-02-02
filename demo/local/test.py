@@ -33,7 +33,7 @@ from dolfintape import FluxReconstructor, CellDiameters
 from dolfintape.poincare import poincare_friedrichs_cutoff
 from dolfintape.hat_function import hat_function
 from dolfintape.plotting import plot_alongside, pyplot
-from dolfintape.utils import mkdir_p, logn
+from dolfintape.utils import mkdir_p, logn, list_timings
 
 
 not_working_in_parallel('This')
@@ -565,7 +565,6 @@ def test_CarstensenKlose(p, N):
     glob, loc = solve_problem(p, mesh, f, u)
 
     plot_liftings(glob, loc, 'CarstensenKlose_%s_%s' % (p, N))
-    set_log_level(INFO) # FIXME: Remove me!
     list_timings(TimingClear_clear, [TimingType_wall])
     dolfintape.dfc.cache.list_stats(clear_cache=True, clear_stats=True)
 

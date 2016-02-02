@@ -17,10 +17,13 @@
 
 from __future__ import print_function
 
-from dolfin import la_index_dtype, compile_extension_module, get_log_level
+from dolfin import la_index_dtype, compile_extension_module, PETScVector
+from dolfin import get_log_level, set_log_level, list_timings
 from mpi4py import MPI as MPI4py
 import numpy as np
 import os, errno
+from functools import wraps
+import __builtin__
 
 __all__ = ['la_index_mpitype', 'adapt', 'PETScVector_ipow', 'pow']
 
@@ -70,8 +73,6 @@ void PETScVector_pow(PETScVector& x, double p)
 # Power inplace
 PETScVector_ipow = compile_extension_module(pow_wrapper_code).PETScVector_pow
 
-import __builtin__
-from dolfin import PETScVector
 # Power
 def pow(*args):
     try:
@@ -98,3 +99,22 @@ def logn(log_level, msg):
     """
     if log_level >= get_log_level():
         print(msg, end="")
+
+
+def with_loglevel(log_level):
+    """This decorator switch temporarily DOLFIN log level to
+    given level.
+    """
+    def wrap(f):
+        @wraps(f)
+        def wrapped_f(*args, **kwargs):
+            old_level = get_log_level()
+            set_log_level(log_level)
+            f(*args, **kwargs)
+            set_log_level(old_level)
+        return wrapped_f
+    return wrap
+
+
+# Ignore log level in list_timings
+list_timings = with_loglevel(0)(list_timings)
