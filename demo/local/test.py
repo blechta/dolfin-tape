@@ -520,53 +520,6 @@ def compute_cellwise_grad(r, p):
     return dr_fine, dr_coarse
 
 
-def test_ChaillouSuri(p):
-    from dolfintape.demo_problems.exact_solutions import pLaplace_ChaillouSuri
-
-    #for N in [5, 10, 20]:
-    for N in [5]:
-
-        mesh = UnitSquareMesh(N, N, 'crossed')
-        u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
-        glob, loc = solve_problem(p, mesh, f, u)
-
-        plot_liftings(glob, loc, 'ChaillouSuri_%s_%s' % (p, N))
-        list_timings(TimingClear_clear, [TimingType_wall])
-        dolfintape.dfc.cache.list_stats(clear_cache=True, clear_stats=True)
-
-
-def test_CarstensenKlose(p):
-    from dolfintape.demo_problems.exact_solutions import pLaplace_CarstensenKlose
-    from dolfintape.mesh_fixup import mesh_fixup
-    import mshr
-
-
-    # Build mesh on L-shaped domain (-1, 1)^2 \ (0, 1)*(-1, 0)
-    b0 = mshr.Rectangle(Point(-1.0, -1.0), Point(1.0, 1.0))
-    b1 = mshr.Rectangle(Point(0.0, -1.0), Point(1.0, 0.0))
-
-    #for N in [5, 10, 20]:
-    for N in [5]:
-
-        mesh = mshr.generate_mesh(b0 - b1, N)
-        mesh = mesh_fixup(mesh)
-
-        u, f = pLaplace_CarstensenKlose(p=p, eps=0.0, delta=7.0/8,
-                                        domain=mesh, degree=4)
-        # There are some problems with quadrature element,
-        # see https://bitbucket.org/fenics-project/ffc/issues/84,
-        # so project to Lagrange element
-        f = project(f, FunctionSpace(mesh, 'Lagrange', 4))
-        f.set_allow_extrapolation(True)
-
-        glob, loc = solve_problem(p, mesh, f, u)
-
-        plot_liftings(glob, loc, 'CarstensenKlose_%s_%s' % (p, N))
-        set_log_level(INFO) # FIXME: Remove me!
-        list_timings(TimingClear_clear, [TimingType_wall])
-        dolfintape.dfc.cache.list_stats(clear_cache=True, clear_stats=True)
-
-
 def plot_liftings(glob, loc, prefix):
     path = "results"
     mkdir_p(path)
@@ -578,16 +531,61 @@ def plot_liftings(glob, loc, prefix):
     pyplot.savefig(os.path.join(path, prefix+"w.pdf"))
 
 
+def test_ChaillouSuri(p, N):
+    from dolfintape.demo_problems.exact_solutions import pLaplace_ChaillouSuri
+
+    mesh = UnitSquareMesh(N, N, 'crossed')
+    u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
+    glob, loc = solve_problem(p, mesh, f, u)
+
+    plot_liftings(glob, loc, 'ChaillouSuri_%s_%s' % (p, N))
+    list_timings(TimingClear_clear, [TimingType_wall])
+    dolfintape.dfc.cache.list_stats(clear_cache=True, clear_stats=True)
+
+
+def test_CarstensenKlose(p, N):
+    from dolfintape.demo_problems.exact_solutions import pLaplace_CarstensenKlose
+    from dolfintape.mesh_fixup import mesh_fixup
+    import mshr
+
+    # Build mesh on L-shaped domain (-1, 1)^2 \ (0, 1)*(-1, 0)
+    b0 = mshr.Rectangle(Point(-1.0, -1.0), Point(1.0, 1.0))
+    b1 = mshr.Rectangle(Point(0.0, -1.0), Point(1.0, 0.0))
+    mesh = mshr.generate_mesh(b0 - b1, N)
+    mesh = mesh_fixup(mesh)
+
+    u, f = pLaplace_CarstensenKlose(p=p, eps=0.0, delta=7.0/8,
+                                    domain=mesh, degree=4)
+    # There are some problems with quadrature element,
+    # see https://bitbucket.org/fenics-project/ffc/issues/84,
+    # so project to Lagrange element
+    f = project(f, FunctionSpace(mesh, 'Lagrange', 4))
+    f.set_allow_extrapolation(True)
+
+    glob, loc = solve_problem(p, mesh, f, u)
+
+    plot_liftings(glob, loc, 'CarstensenKlose_%s_%s' % (p, N))
+    set_log_level(INFO) # FIXME: Remove me!
+    list_timings(TimingClear_clear, [TimingType_wall])
+    dolfintape.dfc.cache.list_stats(clear_cache=True, clear_stats=True)
+
+
 def main(argv):
     default_tests = [
-            ('ChaillouSuri', 10.0),
-            ('ChaillouSuri', 1.5),
-            ('CarstensenKlose', 4.0),
+            ('ChaillouSuri',   10.0,  5),
+            ('ChaillouSuri',   10.0, 10),
+            ('ChaillouSuri',   10.0, 15),
+            ('ChaillouSuri',    1.5,  5),
+            ('ChaillouSuri',    1.5, 10),
+            ('ChaillouSuri',    1.5, 15),
+            ('CarstensenKlose', 4.0,  5),
+            ('CarstensenKlose', 4.0, 10),
+            ('CarstensenKlose', 4.0, 15),
         ]
 
     usage = """%s
 
-usage: python %s [-h|--help] [test-name p]
+usage: python %s [-h|--help] [test-name p N]
 
 Without arguments run default test cases. Or run test case with
 given value of p when given on command-line.
@@ -611,8 +609,8 @@ Default test cases:
         print(usage)
         return
 
-    # Now expecting 2 arguments
-    if len(argv) != 3:
+    # Now expecting 3 arguments
+    if len(argv) != 4:
         print("Command-line arguments not understood!")
         print()
         print(usage)
@@ -625,7 +623,7 @@ Default test cases:
         print ("'Test %s' does not exist!" % argv[1])
         return 1
     else:
-        tester(float(argv[2]))
+        tester(float(argv[2]), int(argv[3]))
         return
 
 
