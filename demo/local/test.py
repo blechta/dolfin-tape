@@ -243,9 +243,6 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
 
     # Global lifting of W^{-1, p'} functional R = f + div(S)
     # Compute p-Laplace lifting on the patch on higher degree element
-    # FIXME: Really need high-order space and high qudrature degree
-    #        when we have mesh adaptiviy in place?
-    #V_high = FunctionSpace(mesh, 'Lagrange', 4)
     V_high = FunctionSpace(mesh, 'Lagrange', 2)
     criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
         Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-3*sobolev_norm(u_h, p)**(p-1.0)
@@ -291,7 +288,6 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
             dof = v2d[v.index()]
             dr_glob_p1_vec[dof] = dr_glob_p1_vec[dof][0] \
                                 + val[0]*vol_cell/vol_patch
-    #plot(dr_glob_p1, title='P1 global lifting')
 
     # Lower estimate on ||R|| using exact solution
     if exact_solution:
@@ -312,17 +308,15 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     v2d = vertex_to_dof_map(P1)
 
     # Alterative local lifting of residual
-    # FIXME: Does this have a sense?
+    # FIXME: Does this have a sense? Do we need it?
     r_norm_loc = 0.0
-    #r_loc = Function(V)
-    #r_loc_temp = Function(V)
     P4 = FunctionSpace(mesh, 'Lagrange', 4)
     r_loc = Function(P4)
     r_loc_temp = Function(P4)
 
     # Adjust verbosity
     old_log_level = get_log_level()
-    #set_log_level(WARNING)
+    set_log_level(WARNING)
     prg = Progress('Solving local liftings on patches', mesh.num_vertices())
 
     cf = CellFunction('size_t', mesh)
@@ -334,7 +328,6 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
         submesh = SubMesh(mesh, cf, 1)
 
         # Compute p-Laplace lifting on the patch on higher degree element
-        # FIXME: Consider adding spatial adaptivity to compute lifting
         V_loc = FunctionSpace(submesh, 'Lagrange', 4)
         criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
             Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-3*sobolev_norm(u_h, p)**(p-1.0)
@@ -354,12 +347,6 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
         r_loc_temp.interpolate(r)
         #project(r, V=r_loc_temp.function_space(), function=r_loc_temp, solver_type='lu')
         r_loc.vector()[:] += r_loc_temp.vector()
-        ##plot(r, title='r_a')
-        ##plot(r, mesh=submesh, title='r_a')
-        ##plot(r, mesh=mesh, title='r_a')
-        #plot(r_loc_temp, title='r_a')
-        #plot(r_loc, title='\sum_a r_a')
-        ##interactive()
 
         # Lower estimate on ||R||_a using exact solution
         if exact_solution:
@@ -388,8 +375,6 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     set_log_level(old_log_level)
 
     r_norm_loc **= 1.0/p1
-    #plot(r_loc, title='Alternative local lifting')
-    #plot(r_loc_p1, title='P1 local lifting')
     try:
         e_norm = assemble(r_loc_p1*dx)
         assert np.isclose(e_norm, r_norm_loc**p1)
@@ -413,8 +398,6 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
         info_green("(3.7b) ok: rhs/lhs = %g >= 1" % ratio_b)
     else:
         info_red("(3.7b) bad: rhs/lhs = %g < 1" % ratio_b)
-
-    #interactive()
 
     return dr_glob_p1, r_loc_p1
 
