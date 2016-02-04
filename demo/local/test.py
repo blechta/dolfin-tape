@@ -228,6 +228,9 @@ def solve_p_laplace_adaptive_mesh(p, criterion, V, f, df, zero_guess=False,
 def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     p1 = p/(p-1) # Dual Lebesgue exponent
 
+    # Check that mesh is the coarsest one
+    assert mesh.id() == mesh.root_node().id()
+
     # Get Galerkin approximation of p-Laplace problem -\Delta_p u = f
     V = FunctionSpace(mesh, 'Lagrange', 1)
     criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: Est_eps <= 1e-6*Est_tot
@@ -473,16 +476,24 @@ def compute_cellwise_grad(r, p):
     N = mesh_fine.topology().dim() + 1 # vertices per cell
     dr_fine.vector().__imul__(N)
 
+    # Special case
+    mesh_coarse = mesh_fine.root_node()
+    if mesh_fine.id() == mesh_coarse.id():
+        return dr_fine, dr_fine
+
     # Compute parent cells from finest to coarsest
     mesh = mesh_fine
     tdim = mesh.topology().dim()
     parent_cells = slice(None)
-    while mesh:
+    while mesh.parent():
         parent_cells = mesh.data().array('parent_cell', tdim)[parent_cells]
         mesh = mesh.parent()
 
+    # Sanity check
+    assert parent_cells.shape == (mesh_fine.num_cells(),)
+    assert parent_cells.ptp() + 1 == mesh_coarse.num_cells()
+
     # Init coarse quantity
-    mesh_coarse = mesh_fine.root_node()
     P0_coarse = FunctionSpace(mesh_coarse, 'Discontinuous Lagrange', 0)
     dr_coarse = Function(P0_coarse)
 
