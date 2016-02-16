@@ -45,6 +45,9 @@ parameters['form_compiler']['optimize'] = True
 
 parameters['plotting_backend'] = 'matplotlib'
 
+# Reduce pivotting of LU solver
+PETScOptions.set('mat_mumps_cntl_1', 0.001)
+
 
 class ReconstructorCache(dict):
     def __setitem__(self, key, value):
@@ -74,159 +77,220 @@ class FunctionSpaceCache(dict):
 function_space_cache = FunctionSpaceCache()
 
 
-boundary = CompiledSubDomain("on_boundary")
 
+class pLaplaceAdaptiveSolver(object):
+    def __init__(self, p, q, f, df, exact_solution=None):
+        assert np.allclose(1.0/float(p) + 1.0/float(q), 1.0), \
+                "Expected conjugate Lebesgue exponents " \
+                "p, q (of type int, float, or Constatnt)!"
 
-def solve_p_laplace(p, eps, V, f, df, u0=None, exact_solution=None):
-    """Approximate (p, eps)-Laplace problem with rhs of the form
+        self.p = p
+        self.q = q
+        self.f = f
+        self.df = df
+        self.u_ex = exact_solution
 
-        (f, v) - (df, grad(v))  with test function v
+        self.boundary = CompiledSubDomain("on_boundary")
 
-    on space V with initial Newton approximation u0. Return solution
-    approximation, discretization err estimate, regularization err
-    estimate, total err estimate and energy-like upper estimate (if
-    exact solution is provided).
-    """
-    p1 = p/(p-1)
-    p = Constant(p)
-    p1 = Constant(p1)
-    eps = Constant(eps)
+    def _solve(self, eps, u, reconstructor):
+        """Approximate (p, eps)-Laplace problem with rhs of the form
 
-    mesh = V.mesh()
-    dx = Measure('dx', domain=mesh)
+            (f, v) - (df, grad(v))  with test function v
 
-    # Initial approximation for Newton
-    u = u0.copy(deepcopy=False) if u0 else Function(V)
-
-    # Problem formulation
-    S = inner(grad(u), grad(u))**(0.5*p-1.0) * grad(u) + df
-    S_eps = (eps + inner(grad(u), grad(u)))**(0.5*p-1.0) * grad(u) + df
-    v = TestFunction(V)
-    F_eps = ( inner(S_eps, grad(v)) - f*v ) * dx
-    bc = DirichletBC(V, exact_solution if exact_solution else 0.0, boundary)
-    solve(F_eps == 0, u, bc,
-          solver_parameters={'newton_solver':
-                                {'maximum_iterations': 50,
-                                 'report': False}
-                            })
-
-    # Reconstruct flux q in H^p1(div) s.t.
-    #       q ~ -S
-    #   div q ~ f
-    reconstructor = reconstructor_cache[(V.mesh(), V.ufl_element().degree())]
-    q = reconstructor.reconstruct(S, f).sub(0, deepcopy=False)
-
-    # Compute error estimate using equilibrated stress reconstruction
-    P0 = function_space_cache[(mesh, 'Discontinuous Lagrange', 0)]
-    v = TestFunction(P0)
-    h = CellDiameters(mesh)
-    Cp = Constant(2.0*(0.5*p)**(1.0/p)) # Poincare estimates by [Chua, Wheeden 2006]
-    est0 = assemble(((Cp*h*(f-div(q)))**2)**(0.5*p1)*v*dx)
-    est1 = assemble(inner(S_eps+q, S_eps+q)**(0.5*p1)*v*dx)
-    est2 = assemble(inner(S_eps-S, S_eps-S)**(0.5*p1)*v*dx)
-    p1 = float(p1)
-    est_h   = est0.array()**(1.0/p1) + est1.array()**(1.0/p1)
-    est_eps = est2.array()**(1.0/p1)
-    est_tot = est_h + est_eps
-    Est_h   = MPI.sum( mesh.mpi_comm(), (est_h  **p1).sum() )**(1.0/p1)
-    Est_eps = MPI.sum( mesh.mpi_comm(), (est_eps**p1).sum() )**(1.0/p1)
-    Est_tot = MPI.sum( mesh.mpi_comm(), (est_tot**p1).sum() )**(1.0/p1)
-
-    # Wrap arrays as cell functions
-    est_h = vecarray_to_cellfunction(est_h, P0)
-    est_eps = vecarray_to_cellfunction(est_eps, P0)
-    est_tot = vecarray_to_cellfunction(est_tot, P0)
-
-    # Upper estimate using exact solution
-    if exact_solution:
-        S_exact = ufl.replace(S, {u: exact_solution})
-        Est_up = sobolev_norm(S-S_exact, p1, k=0)
-    else:
-        Est_up = None
-
-    log(18, 'Error estimates: overall %g, discretization %g, '
-            'regularization %g, estimate_up %s'
-            % (Est_tot, Est_h, Est_eps, Est_up))
-
-    return u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up
-
-
-def solve_p_laplace_adaptive_eps(p, criterion, u, f, df, zero_guess=False,
-                                 exact_solution=None):
-    """Approximate p-Laplace problem with rhs of the form
-
-        (f, v) - (df, grad(v))  with test function v
-
-    on space V with initial Newton approximation u0. Compute adaptively
-    in regularization parameter eps and stop when
-
-        criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: bool
-
-    returns True. Return u and various estimators."""
-    # Initial parameters
-    # FIXME: Shouldn't we retain the state of eps from the previous
-    #        spatial adaptivity step?
-    #eps, eps_decrease = 1.0, 0.1**0.5
-    eps, eps_decrease = 1e-3, 0.1**1.5
-    #eps, eps_decrease = 1e-6, 0.1**0.5
-
-    logn(25, 'Adapting regularization')
-    while True:
-        logn(25, '.')
-        result = solve_p_laplace(p, eps, u.function_space(), f, df,
-                                 u if not zero_guess else None,
-                                 exact_solution)
-        u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
-        if criterion(None, Est_h, Est_eps, Est_tot, Est_up):
-            break
-        eps *= eps_decrease
-    log(25, '')
-    return result
-
-
-def solve_p_laplace_adaptive_mesh(p, criterion, V, f, df, zero_guess=False,
-                                  exact_solution=None):
-    """Approximate p-Laplace problem with rhs of the form
-
-        (f, v) - (df, grad(v))  with test function v
-
-    with initial Newton approximation u0. Start on space V and refine
-    adaptively mesh (where discretization estimator is large) and
-    regularization parameter epsilon until
-
-        criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: bool
-
-    returns True. Return u."""
-    u = Function(V)
-    while True:
-        logn(25, 'Adapting mesh (space dimension %s): ' % V.dim())
-        result = solve_p_laplace_adaptive_eps(p, criterion, u, f, df,
-                                 zero_guess, exact_solution)
-        u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
-
-        # HACK: Drop unneeded data
-        reconstructor_cache.clear()
-        function_space_cache.clear()
-
-        # Check convergence
-        log(25, 'Estimators h, eps, tot, up: %s' % (result[4:],))
-        log(25, r'||\nabla u_h||_p^{p-1} = %s' % sobolev_norm(u, p)**(p-1.0))
-        if criterion(u, Est_h, Est_eps, Est_tot, Est_up):
-            break
-
-        # Refine mesh
-        markers = estimator_to_markers(est_h, p/(p-1.0), aggressivity=2.5)
-        log(25, 'Marked %s of %s cells for refinement'
-                % (sum(markers), markers.mesh().num_cells()))
-        mesh = adapt(V.mesh(), markers)
-        u = adapt(u, mesh)
+        on space V with initial Newton approximation u0. Return solution
+        approximation, discretization err estimate, regularization err
+        estimate, total err estimate and energy-like upper estimate (if
+        exact solution is provided).
+        """
+        p, q = self.p, self.q
+        f, df = self.f, self.df
+        boundary = self.boundary
+        exact_solution = self.u_ex
         V = u.function_space()
+        mesh = V.mesh()
+        dx = Measure('dx', domain=mesh)
+        eps = Constant(eps)
 
-    return u
+        # Problem formulation
+        S = inner(grad(u), grad(u))**(p/2-1) * grad(u) + df
+        S_eps = (eps + inner(grad(u), grad(u)))**(p/2-1) * grad(u) + df
+        v = TestFunction(V)
+        F_eps = ( inner(S_eps, grad(v)) - f*v ) * dx
+        bc = DirichletBC(V, exact_solution if exact_solution else 0.0, boundary)
+        solve(F_eps == 0, u, bc,
+              solver_parameters={'newton_solver':
+                                    {'maximum_iterations': 50,
+                                     'report': False}
+                                })
+
+        # Reconstruct flux q in H^q(div) s.t.
+        #       q ~ -S
+        #   div q ~ f
+        #reconstructor = reconstructor_cache[(V.mesh(), V.ufl_element().degree())]
+        Q = reconstructor.reconstruct(S, f).sub(0, deepcopy=False)
+
+        # Compute error estimate using equilibrated stress reconstruction
+        P0 = function_space_cache[(mesh, 'Discontinuous Lagrange', 0)]
+        v = TestFunction(P0)
+        h = CellDiameters(mesh)
+        Cp = Constant(2.0*(0.5*p)**(1.0/p)) # Poincare estimates by [Chua, Wheeden 2006]
+        est0 = assemble(((Cp*h*(f-div(Q)))**2)**(0.5*q)*v*dx)
+        est1 = assemble(inner(S_eps+Q, S_eps+Q)**(0.5*q)*v*dx)
+        est2 = assemble(inner(S_eps-S, S_eps-S)**(0.5*q)*v*dx)
+        q = float(q)
+        est_h   = est0.array()**(1.0/q) + est1.array()**(1.0/q)
+        est_eps = est2.array()**(1.0/q)
+        est_tot = est_h + est_eps
+        Est_h   = MPI.sum( mesh.mpi_comm(), (est_h  **q).sum() )**(1.0/q)
+        Est_eps = MPI.sum( mesh.mpi_comm(), (est_eps**q).sum() )**(1.0/q)
+        Est_tot = MPI.sum( mesh.mpi_comm(), (est_tot**q).sum() )**(1.0/q)
+
+        # Wrap arrays as cell functions
+        est_h = self.vecarray_to_cellfunction(est_h, P0)
+        est_eps = self.vecarray_to_cellfunction(est_eps, P0)
+        est_tot = self.vecarray_to_cellfunction(est_tot, P0)
+
+        # Upper estimate using exact solution
+        if exact_solution:
+            S_exact = ufl.replace(S, {u: exact_solution})
+            Est_up = sobolev_norm(S-S_exact, q, k=0)
+        else:
+            Est_up = None
+
+        log(18, 'Error estimates: overall %g, discretization %g, '
+                'regularization %g, estimate_up %s'
+                % (Est_tot, Est_h, Est_eps, Est_up))
+
+        return u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up
+
+
+    def _adapt_eps(self, criterion, u, epsilons):
+        """Approximate p-Laplace problem with rhs of the form
+
+            (f, v) - (df, grad(v))  with test function v
+
+        on space V with initial Newton approximation u0. Compute adaptively
+        in regularization parameter eps and stop when
+
+            criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: bool
+
+        returns True. Return u and various estimators."""
+        # Prepare flux reconstructor
+        log(25, 'Initializing flux reconstructor')
+        reconstructor = FluxReconstructor(u.function_space().mesh(),
+                u.function_space().ufl_element().degree())
+
+        # Adapt regularization
+        logn(25, 'Adapting regularization')
+        for eps in epsilons:
+            logn(25, '.')
+            result = self._solve(eps, u, reconstructor)
+            u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
+            if criterion(None, Est_h, Est_eps, Est_tot, Est_up):
+                break
+        log(25, '')
+        return result
+
+
+    def solve(self, V, criterion, eps):
+        """Approximate p-Laplace problem with rhs of the form
+
+            (f, v) - (df, grad(v))  with test function v
+
+        with initial Newton approximation u0. Start on space V and refine
+        adaptively mesh (where discretization estimator is large) and
+        regularization parameter epsilon until
+
+            criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: bool
+
+        returns True. Return u."""
+        p = float(self.p)
+        u = Function(V)
+
+        while True:
+            logn(25, 'Adapting mesh (space dimension %s): ' % V.dim())
+            result = self._adapt_eps(criterion, u, eps)
+            u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
+
+            # Check convergence
+            log(25, 'Estimators h, eps, tot, up: %s' % (result[4:],))
+            log(25, r'||\nabla u_h||_p^{p-1} = %s' % sobolev_norm(u, p)**(p-1.0))
+            if criterion(u, Est_h, Est_eps, Est_tot, Est_up):
+                break
+
+            # Refine mesh
+            markers = self.estimator_to_markers(est_h, p/(p-1.0), aggressivity=2.5)
+            log(25, 'Marked %s of %s cells for refinement'
+                    % (sum(markers), markers.mesh().num_cells()))
+            adapt(V.mesh(), markers)
+            mesh = V.mesh().child()
+            adapt(u, mesh)
+            u = u.child()
+            V = u.function_space()
+
+        return u
+
+
+    @staticmethod
+    def estimator_to_markers(est, q, cf=None, aggressivity=1.0):
+        # FIXME: Remove aggressivity, add percentil
+        assert isinstance(est, CellFunctionDouble)
+
+        if cf is None:
+            cf = CellFunction('bool', est.mesh())
+        else:
+            assert isinstance(cf, CellFunctionBool)
+
+        norm = sum(abs(v)**q for v in est)
+        norm = MPI.sum(est.mesh().mpi_comm(), norm)
+        norm = (norm/est.mesh().num_cells())**(1.0/q)
+
+        for c in cells(est.mesh()):
+            cf[c] = abs(est[c]) > aggressivity*norm
+
+        if sum(cf) == 0:
+            estimator_to_markers(est, q, cf=cf, aggressivity=0.5*aggressivity)
+
+        return cf
+
+
+    @staticmethod
+    def vecarray_to_cellfunction(arr, space, cf=None):
+        assert space.ufl_element().family() == "Discontinuous Lagrange"
+        assert space.ufl_element().degree() == 0
+        assert space.ufl_element().value_shape() == ()
+
+        if cf is None:
+            cf = CellFunction('double', space.mesh())
+        else:
+            assert isinstance(cf, CellFunctionDouble)
+
+        cell_dofs = space.dofmap().cell_dofs
+        for c in cells(space.mesh()):
+            cf[c] = arr[cell_dofs(c.index())[0]]
+
+        return cf
+
+
+def solve_p_laplace_adaptive_mesh(p, criterion, V, f, df, zero_guess,
+                                  u_ex=None, eps0=1.0, eps_decrease=0.1**0.5):
+    if isinstance(p, Constant):
+        q = Constant(float(p)/(float(p)-1.0))
+    else:
+        q = p/(p-1)
+    eps = generate_eps_generator(eps0, eps_decrease)
+    solver = pLaplaceAdaptiveSolver(p, q, f, df, u_ex)
+    return solver.solve(V, criterion, eps)
+
+
+def generate_eps_generator(eps0, eps_decrease):
+    while True:
+        yield eps0
+        eps0 *= eps_decrease
 
 
 def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
-    p1 = p/(p-1) # Dual Lebesgue exponent
+    q = p/(p-1) # Dual Lebesgue exponent
 
     # Check that mesh is the coarsest one
     assert mesh.id() == mesh.root_node().id()
@@ -257,16 +321,16 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
 
     # Compute cell-wise norm of global lifting
     dr_glob_fine, dr_glob_coarse = compute_cellwise_grad(r_glob, p)
-    r_norm_glob = sobolev_norm(r_glob, p)**(p/p1)
+    r_norm_glob = sobolev_norm(r_glob, p)**(p/q)
     try:
         e_norm_coarse = assemble(dr_glob_coarse*dx)
         e_norm_fine = assemble(dr_glob_fine*dx)
         N = mesh.topology().dim() + 1 # vertices per cell
-        assert np.isclose(e_norm_fine, N*r_norm_glob**p1)
-        assert np.isclose(e_norm_coarse, N*r_norm_glob**p1)
+        assert np.isclose(e_norm_fine, N*r_norm_glob**q)
+        assert np.isclose(e_norm_coarse, N*r_norm_glob**q)
     except AssertionError:
         info_red(r"N*||\nabla r||_p^p = %g, %g, %g"
-                % (e_norm_coarse, e_norm_fine, N*r_norm_glob**p1))
+                % (e_norm_coarse, e_norm_fine, N*r_norm_glob**q))
     else:
         info_blue(r"||\nabla r||_p^{p-1} = %g" % r_norm_glob)
 
@@ -375,13 +439,13 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     # Recover original verbosity
     set_log_level(old_log_level)
 
-    r_norm_loc **= 1.0/p1
+    r_norm_loc **= 1.0/q
     try:
         e_norm = assemble(r_loc_p1*dx)
-        assert np.isclose(e_norm, r_norm_loc**p1)
+        assert np.isclose(e_norm, r_norm_loc**q)
     except AssertionError:
         info_red(r"||e||_q^q = %g, \sum_a ||\nabla r_a||_p^p = %g"
-                % (e_norm, r_norm_loc**p1))
+                % (e_norm, r_norm_loc**q))
 
     info_blue(r"||\nabla r||_p^{p-1} = %g, ( \sum_a ||\nabla r_a||_p^p )^{1/q} = %g"
               % (r_norm_glob, r_norm_loc))
@@ -389,7 +453,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     N = mesh.topology().dim() + 1 # vertices per cell
     C_PF = poincare_friedrichs_cutoff(mesh, p)
     ratio_a = ( N**(1.0/p) * C_PF * r_norm_loc ) / r_norm_glob
-    ratio_b = ( N**(1.0/p1) * r_norm_glob ) / r_norm_loc
+    ratio_b = ( N**(1.0/q) * r_norm_glob ) / r_norm_loc
     info_blue("C_{cont,PF} = %g" %  C_PF)
     if ratio_a >= 1.0:
         info_green("(3.7a) ok: rhs/lhs = %g >= 1" % ratio_a)
@@ -426,44 +490,6 @@ class Extension(Expression):
             values[:] = 0.0
         else:
             assert not self._u.get_allow_extrapolation()
-
-
-def vecarray_to_cellfunction(arr, space, cf=None):
-    assert space.ufl_element().family() == "Discontinuous Lagrange"
-    assert space.ufl_element().degree() == 0
-    assert space.ufl_element().value_shape() == ()
-
-    if cf is None:
-        cf = CellFunction('double', space.mesh())
-    else:
-        assert isinstance(cf, CellFunctionDouble)
-
-    cell_dofs = space.dofmap().cell_dofs
-    for c in cells(space.mesh()):
-        cf[c] = arr[cell_dofs(c.index())[0]]
-
-    return cf
-
-
-def estimator_to_markers(est, p1, cf=None, aggressivity=1.0):
-    assert isinstance(est, CellFunctionDouble)
-
-    if cf is None:
-        cf = CellFunction('bool', est.mesh())
-    else:
-        assert isinstance(cf, CellFunctionBool)
-
-    norm = sum(abs(v)**p1 for v in est)
-    norm = MPI.sum(est.mesh().mpi_comm(), norm)
-    norm = (norm/est.mesh().num_cells())**(1.0/p1)
-
-    for c in cells(est.mesh()):
-        cf[c] = abs(est[c]) > aggressivity*norm
-
-    if sum(cf) == 0:
-        estimator_to_markers(est, p1, cf=cf, aggressivity=0.5*aggressivity)
-
-    return cf
 
 
 def compute_cellwise_grad(r, p):
