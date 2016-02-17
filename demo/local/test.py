@@ -32,6 +32,7 @@ import os
 from dolfintape import FluxReconstructor, CellDiameters
 from dolfintape.poincare import poincare_friedrichs_cutoff
 from dolfintape.hat_function import hat_function
+from dolfintape.extension import Extension
 from dolfintape.plotting import plot_alongside, pyplot
 from dolfintape.utils import mkdir_p, logn, list_timings
 
@@ -281,7 +282,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     # Compute p-Laplace lifting on the patch on higher degree element
     V_high = FunctionSpace(mesh, 'Lagrange', 2)
     criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
-        Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-0*sobolev_norm(u_h, p)**(p-1.0)
+        Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-3*sobolev_norm(u_h, p)**(p-1.0)
     parameters['form_compiler']['quadrature_degree'] = 8
     log(25, 'Computing global lifting of the resiual')
     u.set_allow_extrapolation(True)
@@ -379,7 +380,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
         log(18, r"||\nabla r_a||_p = %g" % r_norm_loc_a**(1.0/p))
 
         # Alternative local lifting
-        r = Extension(r, domain=mesh, element=r.ufl_element())
+        r = Extension(r, domain=mesh)
         r_loc_temp.interpolate(r)
         #project(r, V=r_loc_temp.function_space(), function=r_loc_temp, solver_type='lu')
         r_loc.vector()[:] += r_loc_temp.vector()
@@ -448,19 +449,6 @@ def sobolev_norm(u, p, k=1, domain=None):
     elif k != 0:
         raise NotImplementedError
     return assemble(inner(u, u)**(p/2)*dX)**(1.0/float(p))
-
-
-class Extension(Expression):
-    def __init__(self, u, **kwargs):
-        self._u = u
-        assert 'domain' in kwargs and 'element' in kwargs
-    def eval(self, values, x):
-        try:
-            self._u.eval(values, x)
-        except RuntimeError:
-            values[:] = 0.0
-        else:
-            assert not self._u.get_allow_extrapolation()
 
 
 def compute_cellwise_grad(r, p):
