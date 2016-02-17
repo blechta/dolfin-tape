@@ -52,7 +52,7 @@ parameters['plotting_backend'] = 'matplotlib'
 PETScOptions.set('mat_mumps_cntl_1', 0.001)
 
 
-def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
+def solve_problem(p, mesh, f, exact_solution=None):
     q = p/(p-1) # Dual Lebesgue exponent
 
     # Check that mesh is the coarsest one
@@ -63,8 +63,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: Est_eps <= 1e-6*Est_tot
     log(25, 'Computing residual of p-Laplace problem')
     u = solve_p_laplace_adaptive(p, criterion, V, f,
-                                 zero(mesh.geometry().dim()), zero_guess,
-                                 exact_solution)
+                                 zero(mesh.geometry().dim()), exact_solution)
 
     # p-Laplacian flux of u
     S = inner(grad(u), grad(u))**(0.5*Constant(p)-1.0) * grad(u)
@@ -77,7 +76,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     parameters['form_compiler']['quadrature_degree'] = 8
     log(25, 'Computing global lifting of the resiual')
     u.set_allow_extrapolation(True)
-    r_glob = solve_p_laplace_adaptive(p, criterion, V_high, f, S, zero_guess)
+    r_glob = solve_p_laplace_adaptive(p, criterion, V_high, f, S)
     u.set_allow_extrapolation(False)
     parameters['form_compiler']['quadrature_degree'] = -1
 
@@ -159,7 +158,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
         criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
             Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-3*sobolev_norm(u_h, p)**(p-1.0)
         parameters['form_compiler']['quadrature_degree'] = 8
-        r = solve_p_laplace_adaptive(p, criterion, V_loc, f, S, zero_guess)
+        r = solve_p_laplace_adaptive(p, criterion, V_loc, f, S)
         parameters['form_compiler']['quadrature_degree'] = -1
 
         # Compute local norm of residual

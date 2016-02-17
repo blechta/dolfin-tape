@@ -30,8 +30,8 @@ __all__ = ['solve_p_laplace_adaptive', 'pLapLaplaceAdaptiveSolver',
            'generate_eps_generator']
 
 
-def solve_p_laplace_adaptive(p, criterion, V, f, df, zero_guess,
-                             u_ex=None, eps0=1.0, eps_decrease=0.1**0.5):
+def solve_p_laplace_adaptive(p, criterion, V, f, df, u_ex=None,
+                             eps0=1.0, eps_decrease=0.1**0.5):
     if isinstance(p, Constant):
         q = Constant(float(p)/(float(p)-1.0))
     else:
