@@ -1,4 +1,4 @@
-# Copyright (C) 2015, 2016 Jan Blechta
+# Copyright (C) 2016 Jan Blechta
 #
 # This file is part of dolfin-tape.
 #
@@ -15,7 +15,30 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with dolfin-tape. If not, see <http://www.gnu.org/licenses/>.
 
-from dolfintape.demo_problems.StokesVortices import StokesVortices
-from dolfintape.demo_problems.PowerLawVortices import PowerLawVortices
-from dolfintape.demo_problems.exact_solutions import pStokes_vortices
-from dolfintape.demo_problems.pLaplaceAdaptiveSolver import pLaplaceAdaptiveSolver, solve_p_laplace_adaptive
+from dolfin import Constant, dx, grad, inner, assemble
+import numpy as np
+
+__all__ = ['sobolev_norm']
+
+
+def sobolev_norm(u, p, k=1, domain=None):
+    """Return Sobolev seminorm on W^{k, p} of function u. If u is
+    None, return infinity."""
+    # Special case
+    if u is None:
+        return np.infty
+
+    # Prepare exponent and measure
+    p = Constant(p) if p is not 2 else p
+    dX = dx(domain)
+
+    # Take derivative if k==1
+    if k == 1:
+        u = grad(u)
+    elif k == 0:
+        u = u
+    else:
+        raise NotImplementedError
+
+    # Assemble functional and return
+    return assemble(inner(u, u)**(p/2)*dX)**(1.0/float(p))
