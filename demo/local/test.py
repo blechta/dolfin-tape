@@ -230,6 +230,21 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
 
 
 def compute_cellwise_grad(r, p):
+    r"""Return fine and coarse P0 functions representing cell-wise
+    L^p norm of grad(r), i.e. functions having values
+
+        ||\nabla r||_{p, K} \frac{d+1}{|K|}
+
+    on cell K. First (fine) function is defined on (fine) cells of r;
+    second (coarse) function is reduction to coarse mesh (obtained from
+    root node of hierarchical chain of r, if any).
+
+    Scaling is chosen such that
+
+        \int D = (d+1) ||\nabla r||_p^p
+
+    for both returned functions D.
+    """
     # Compute desired quantity accurately on fine mesh
     mesh_fine = r.function_space().mesh()
     P0_fine = FunctionSpace(mesh_fine, 'Discontinuous Lagrange', 0)
