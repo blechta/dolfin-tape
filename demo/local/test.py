@@ -69,7 +69,6 @@ def solve_problem(p, mesh, f, exact_solution=None):
     S = inner(grad(u), grad(u))**(0.5*Constant(p)-1.0) * grad(u)
 
     # Global lifting of W^{-1, p'} functional R = f + div(S)
-    # Compute p-Laplace lifting on the patch on higher degree element
     V_high = FunctionSpace(mesh, 'Lagrange', 2)
     criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
         Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-3*sobolev_norm(u_h, p)**(p-1.0)

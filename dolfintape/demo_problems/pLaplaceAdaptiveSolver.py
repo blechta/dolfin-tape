@@ -27,28 +27,53 @@ from dolfintape.poincare import poincare_const
 from dolfintape.sobolev_norm import sobolev_norm
 
 __all__ = ['solve_p_laplace_adaptive', 'pLapLaplaceAdaptiveSolver',
-           'generate_eps_generator']
+           'geometric_progression']
 
 
 def solve_p_laplace_adaptive(p, criterion, V, f, df, u_ex=None,
                              eps0=1.0, eps_decrease=0.1**0.5):
+    """Approximate p-Laplace problem with rhs of the form
+
+        (f, v) - (df, grad(v))  with test function v
+
+    on initial space V. Compute adaptively in regularization parameter
+    and refine mesh adaptively until
+
+        criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: bool
+
+    returns True. Return u."""
     if isinstance(p, Constant):
         q = Constant(float(p)/(float(p)-1.0))
     else:
         q = p/(p-1)
-    eps = generate_eps_generator(eps0, eps_decrease)
+    eps = geometric_progression(eps0, eps_decrease)
     solver = pLaplaceAdaptiveSolver(p, q, f, df, u_ex)
     return solver.solve(V, criterion, eps)
 
 
-def generate_eps_generator(eps0, eps_decrease):
+def geometric_progression(a0, q):
+    """Return generator taking values of geometric progression:
+        a0,
+        a0*q,
+        a0*q**2,
+        a0*q**3,
+        ...
+    """
     while True:
-        yield eps0
-        eps0 *= eps_decrease
+        yield a0
+        a0 *= q
 
 
 class pLaplaceAdaptiveSolver(object):
+    """Adaptive solver for p-Laplace problem with spatial adaptivity and
+    adaptivity in regularization parameter.
+    """
     def __init__(self, p, q, f, df, exact_solution=None):
+        """Adaptive solver for p-Laplace problem (q should be dual exponent
+        q = p/(p-1)) with rhs of the form
+
+            (f, v) - (df, grad(v))  with test function v.
+        """
         assert np.allclose(1.0/float(p) + 1.0/float(q), 1.0), \
                 "Expected conjugate Lebesgue exponents " \
                 "p, q (of type int, float, or Constatnt)!"
@@ -61,15 +86,45 @@ class pLaplaceAdaptiveSolver(object):
 
         self.boundary = CompiledSubDomain("on_boundary")
 
+
+    def solve(self, V, criterion, eps):
+        """Start on initial function space V, refine adaptively mesh and
+        regularization parameter provided by decreasing generator eps
+        until
+
+            criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: bool
+
+        returns True. Return found approximation."""
+        p = float(self.p)
+        u = Function(V)
+
+        while True:
+            logn(25, 'Adapting mesh (space dimension %s): ' % V.dim())
+            result = self._adapt_eps(criterion, u, eps)
+            u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
+
+            # Check convergence
+            log(25, 'Estimators h, eps, tot, up: %s' % (result[4:],))
+            log(25, r'||\nabla u_h||_p^{p-1} = %s' % sobolev_norm(u, p)**(p-1.0))
+            if criterion(u, Est_h, Est_eps, Est_tot, Est_up):
+                break
+
+            # Refine mesh
+            markers = self.estimator_to_markers(est_h, p/(p-1.0), aggressivity=2.5)
+            log(25, 'Marked %s of %s cells for refinement'
+                    % (sum(markers), markers.mesh().num_cells()))
+            adapt(V.mesh(), markers)
+            mesh = V.mesh().child()
+            adapt(u, mesh)
+            u = u.child()
+            V = u.function_space()
+
+        return u
+
+
     def _solve(self, eps, u, reconstructor, P0):
-        """Approximate (p, eps)-Laplace problem with rhs of the form
-
-            (f, v) - (df, grad(v))  with test function v
-
-        on space V with initial Newton approximation u0. Return solution
-        approximation, discretization err estimate, regularization err
-        estimate, total err estimate and energy-like upper estimate (if
-        exact solution is provided).
+        """Find approximate solution with fixed eps and mesh. Use
+        reconstructor to reconstruct the flux and estimate errors.
         """
         p, q = self.p, self.q
         f, df = self.f, self.df
@@ -132,16 +187,13 @@ class pLaplaceAdaptiveSolver(object):
 
 
     def _adapt_eps(self, criterion, u, epsilons):
-        """Approximate p-Laplace problem with rhs of the form
+        """Solve adaptively in eps on fixed space (given by u) until
 
-            (f, v) - (df, grad(v))  with test function v
+            criterion = lambda None, Est_h, Est_eps, Est_tot, Est_up: bool
 
-        on space V with initial Newton approximation u0. Compute adaptively
-        in regularization parameter eps and stop when
-
-            criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: bool
-
-        returns True. Return u and various estimators."""
+        return True. Notice None supplied instead of u_h, thus not taking
+        discretization error criterion into account.
+        """
         # Prepare flux reconstructor and P0 space
         log(25, 'Initializing flux reconstructor')
         reconstructor = FluxReconstructor(u.function_space().mesh(),
@@ -161,47 +213,11 @@ class pLaplaceAdaptiveSolver(object):
         return result
 
 
-    def solve(self, V, criterion, eps):
-        """Approximate p-Laplace problem with rhs of the form
-
-            (f, v) - (df, grad(v))  with test function v
-
-        with initial Newton approximation u0. Start on space V and refine
-        adaptively mesh (where discretization estimator is large) and
-        regularization parameter epsilon until
-
-            criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: bool
-
-        returns True. Return u."""
-        p = float(self.p)
-        u = Function(V)
-
-        while True:
-            logn(25, 'Adapting mesh (space dimension %s): ' % V.dim())
-            result = self._adapt_eps(criterion, u, eps)
-            u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
-
-            # Check convergence
-            log(25, 'Estimators h, eps, tot, up: %s' % (result[4:],))
-            log(25, r'||\nabla u_h||_p^{p-1} = %s' % sobolev_norm(u, p)**(p-1.0))
-            if criterion(u, Est_h, Est_eps, Est_tot, Est_up):
-                break
-
-            # Refine mesh
-            markers = self.estimator_to_markers(est_h, p/(p-1.0), aggressivity=2.5)
-            log(25, 'Marked %s of %s cells for refinement'
-                    % (sum(markers), markers.mesh().num_cells()))
-            adapt(V.mesh(), markers)
-            mesh = V.mesh().child()
-            adapt(u, mesh)
-            u = u.child()
-            V = u.function_space()
-
-        return u
-
-
     @classmethod
     def estimator_to_markers(cls, est, q, cf=None, aggressivity=1.0):
+        """Take double CellFunction and convert it to bool cell function
+        according to some marking strategy.
+        """
         # FIXME: Remove aggressivity, add percentil
         assert isinstance(est, CellFunctionDouble)
 
@@ -225,6 +241,9 @@ class pLaplaceAdaptiveSolver(object):
 
     @staticmethod
     def vecarray_to_cellfunction(arr, space, cf=None):
+        """Convert numpy array coming from function.vector().array() for
+        P0 function to CellFunction, optionally existing cf.
+        """
         assert space.ufl_element().family() == "Discontinuous Lagrange"
         assert space.ufl_element().degree() == 0
         assert space.ufl_element().value_shape() == ()
