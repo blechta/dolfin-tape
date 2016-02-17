@@ -49,35 +49,6 @@ parameters['plotting_backend'] = 'matplotlib'
 PETScOptions.set('mat_mumps_cntl_1', 0.001)
 
 
-class ReconstructorCache(dict):
-    def __setitem__(self, key, value):
-        mesh, degree = key
-        dict.__setitem__(self, (mesh.id(), degree), value)
-    def __getitem__(self, key):
-        mesh, degree = key
-        try:
-            return dict.__getitem__(self, (mesh.id(), degree))
-        except KeyError:
-            self[key] = reconstructor = FluxReconstructor(mesh, degree)
-            return reconstructor
-reconstructor_cache = ReconstructorCache()
-
-
-class FunctionSpaceCache(dict):
-    def __setitem__(self, key, value):
-        mesh, family, degree = key
-        dict.__setitem__(self, (mesh.id(), family, degree), value)
-    def __getitem__(self, key):
-        mesh, family, degree = key
-        try:
-            return dict.__getitem__(self, (mesh.id(), family, degree))
-        except KeyError:
-            self[key] = space = FunctionSpace(mesh, family, degree)
-            return space
-function_space_cache = FunctionSpaceCache()
-
-
-
 class pLaplaceAdaptiveSolver(object):
     def __init__(self, p, q, f, df, exact_solution=None):
         assert np.allclose(1.0/float(p) + 1.0/float(q), 1.0), \
@@ -92,7 +63,7 @@ class pLaplaceAdaptiveSolver(object):
 
         self.boundary = CompiledSubDomain("on_boundary")
 
-    def _solve(self, eps, u, reconstructor):
+    def _solve(self, eps, u, reconstructor, P0):
         """Approximate (p, eps)-Laplace problem with rhs of the form
 
             (f, v) - (df, grad(v))  with test function v
@@ -126,11 +97,9 @@ class pLaplaceAdaptiveSolver(object):
         # Reconstruct flux q in H^q(div) s.t.
         #       q ~ -S
         #   div q ~ f
-        #reconstructor = reconstructor_cache[(V.mesh(), V.ufl_element().degree())]
         Q = reconstructor.reconstruct(S, f).sub(0, deepcopy=False)
 
         # Compute error estimate using equilibrated stress reconstruction
-        P0 = function_space_cache[(mesh, 'Discontinuous Lagrange', 0)]
         v = TestFunction(P0)
         h = CellDiameters(mesh)
         Cp = Constant(2.0*(0.5*p)**(1.0/p)) # Poincare estimates by [Chua, Wheeden 2006]
@@ -175,16 +144,18 @@ class pLaplaceAdaptiveSolver(object):
             criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: bool
 
         returns True. Return u and various estimators."""
-        # Prepare flux reconstructor
+        # Prepare flux reconstructor and P0 space
         log(25, 'Initializing flux reconstructor')
         reconstructor = FluxReconstructor(u.function_space().mesh(),
                 u.function_space().ufl_element().degree())
+        P0 = FunctionSpace(u.function_space().mesh(),
+                'Discontinuous Lagrange', 0)
 
         # Adapt regularization
         logn(25, 'Adapting regularization')
         for eps in epsilons:
             logn(25, '.')
-            result = self._solve(eps, u, reconstructor)
+            result = self._solve(eps, u, reconstructor, P0)
             u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
             if criterion(None, Est_h, Est_eps, Est_tot, Est_up):
                 break
@@ -231,8 +202,8 @@ class pLaplaceAdaptiveSolver(object):
         return u
 
 
-    @staticmethod
-    def estimator_to_markers(est, q, cf=None, aggressivity=1.0):
+    @classmethod
+    def estimator_to_markers(cls, est, q, cf=None, aggressivity=1.0):
         # FIXME: Remove aggressivity, add percentil
         assert isinstance(est, CellFunctionDouble)
 
@@ -249,7 +220,7 @@ class pLaplaceAdaptiveSolver(object):
             cf[c] = abs(est[c]) > aggressivity*norm
 
         if sum(cf) == 0:
-            estimator_to_markers(est, q, cf=cf, aggressivity=0.5*aggressivity)
+            cls.estimator_to_markers(est, q, cf=cf, aggressivity=0.5*aggressivity)
 
         return cf
 
@@ -310,7 +281,7 @@ def solve_problem(p, mesh, f, exact_solution=None, zero_guess=False):
     # Compute p-Laplace lifting on the patch on higher degree element
     V_high = FunctionSpace(mesh, 'Lagrange', 2)
     criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
-        Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-3*sobolev_norm(u_h, p)**(p-1.0)
+        Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-0*sobolev_norm(u_h, p)**(p-1.0)
     parameters['form_compiler']['quadrature_degree'] = 8
     log(25, 'Computing global lifting of the resiual')
     u.set_allow_extrapolation(True)
