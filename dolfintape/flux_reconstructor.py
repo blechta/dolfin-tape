@@ -216,6 +216,24 @@ class FluxReconstructor(object):
         t.stop()
 
 
+    def get_factor_info(self):
+        """Return info about space dimensions, system matrix
+        and factor matrix"""
+        info_mat = self._A.mat().getInfo()
+        info_fact = self._solver.ksp().getPC().getFactorMatrix().getInfo()
+        info = {"compressed dimension": self._W.dim(),
+                "uncompressed dimension": self._A.size(0),
+                "mat info": info_mat,
+                "fact info": info_fact,}
+        return info
+
+
+    def pc_view(self):
+        """Call PETSc PCView on underlying PC object"""
+        solver = self._solver
+        ksp = solver.ksp()
+        pc = ksp.getPC()
+        pc.view()
 
 
     def _init_tensors(self):
