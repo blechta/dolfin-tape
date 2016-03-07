@@ -195,15 +195,7 @@ class FluxReconstructor(object):
         #PETScOptions.set('mat_mumps_icntl_4', 3)
         #PETScOptions.set('mat_mumps_icntl_2', 6)
 
-        class PETScLUSolver_no_configure(PETScLUSolver):
-            def configure_ksp(solver_package):
-                # TODO: This probably does not work because there is missing
-                #       SWIG director for this method
-                raise NotImplementedError
-
-        #self._solver = solver = PETScLUSolver('mumps')
-        self._solver = solver = PETScLUSolver_no_configure('mumps')
-        #self._solver = solver = PETScLUSolver('superlu_dist')
+        self._solver = solver = PETScLUSolver('mumps')
         solver.set_operator(self._A)
 
         # Allow Cholesky only with PETSc having fixed
@@ -211,18 +203,9 @@ class FluxReconstructor(object):
         if PETSc.Sys.getVersion() >= (3, 5, 3):
             solver.parameters['symmetric'] = True
 
-        # TODO: Does not work because PETScLUSolver::configure_ksp is called
-        #       during PETScLUSolver::solve and setups the shift to
-        #       ('nonzero', PETSC_DECIDE)
-        ksp = solver.ksp()
-        pc = ksp.getPC()
-        pc.setFactorShift('none', 0.0)
-
-        # NOTE: The whole idea of getting rid of shift setup by DOLFIN
-        #       can be implemented directly in petsc4py without DOLFIN wrappers.
-        #       See also https://bitbucket.org/fenics-project/dolfin/issues/608
-
         t.stop()
+
+
 
 
     def _init_tensors(self):
