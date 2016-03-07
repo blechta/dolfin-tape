@@ -29,12 +29,11 @@ import ufc
 import numpy as np
 import os
 
-from dolfintape import FluxReconstructor, CellDiameters
 from dolfintape.poincare import poincare_friedrichs_cutoff
 from dolfintape.hat_function import hat_function
 from dolfintape.extension import Extension
 from dolfintape.plotting import plot_alongside, pyplot
-from dolfintape.utils import mkdir_p, logn, list_timings
+from dolfintape.utils import mkdir_p, list_timings
 from dolfintape.demo_problems import solve_p_laplace_adaptive
 from dolfintape.sobolev_norm import sobolev_norm
 
