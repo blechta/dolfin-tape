@@ -191,9 +191,19 @@ class FluxReconstructor(object):
         """Initilize Cholesky solver for solving flux reconstruction."""
         t = Timer('dolfintape: setup solver for flux reconstruction')
 
+        prefix = self._A.mat().getOptionsPrefix()
+
         # Diagnostic output
-        #PETScOptions.set('mat_mumps_icntl_4', 3)
-        #PETScOptions.set('mat_mumps_icntl_2', 6)
+        #PETScOptions.set(prefix + 'mat_mumps_icntl_4', 2)
+        #PETScOptions.set(prefix + 'mat_mumps_icntl_2', 6)
+
+        # Ordering options
+        #PETScOptions.set(prefix + 'mat_mumps_icntl_7', 7)
+        #PETScOptions.set(prefix + 'mat_mumps_icntl_12', 0)
+
+        # Pivotting options
+        #PETScOptions.set(prefix + 'mat_mumps_cntl_1', 1e-0)
+        #PETScOptions.set(prefix + 'mat_mumps_cntl_4', 1e-8)
 
         self._solver = solver = PETScLUSolver('mumps')
         solver.set_operator(self._A)
@@ -243,6 +253,11 @@ class FluxReconstructor(object):
         A.init(tl_A)
         b.init(tl_b)
         x.init(tl_b)
+
+        # Set unique options prefix for objects
+        A.mat().setOptionsPrefix('dolfin_%s_' % A.id())
+        b.vec().setOptionsPrefix('dolfin_%s_' % b.id())
+        x.vec().setOptionsPrefix('dolfin_%s_' % x.id())
 
         # Drop assembled zeros as our sparsity pattern counts for non-zeros only
         A.mat().setOption(PETSc.Mat.Option.IGNORE_ZERO_ENTRIES, True)
