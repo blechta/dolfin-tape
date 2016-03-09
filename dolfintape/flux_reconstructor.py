@@ -28,10 +28,12 @@ from dolfintape.hat_function import hat_function_collection
 
 __all__ = ['FluxReconstructor']
 
-class FluxReconstructor(object):
+class FluxReconstructor(Variable):
 
     def __init__(self, mesh, degree):
         """Build flux reconstructor of given degree."""
+        Variable.__init__(self)
+
         self._mesh = mesh
 
         # Color mesh vertices
@@ -190,22 +192,25 @@ class FluxReconstructor(object):
     def _setup_solver(self):
         """Initilize Cholesky solver for solving flux reconstruction."""
         t = Timer('dolfintape: setup solver for flux reconstruction')
-
-        prefix = self._A.mat().getOptionsPrefix()
+        opts = self.options()
 
         # Diagnostic output
-        #PETScOptions.set(prefix + 'mat_mumps_icntl_4', 2)
-        #PETScOptions.set(prefix + 'mat_mumps_icntl_2', 6)
+        #opts.setValue('mat_mumps_icntl_4', 2)
+        #opts.setValue('mat_mumps_icntl_2', 6)
 
         # Ordering options
-        #PETScOptions.set(prefix + 'mat_mumps_icntl_7', 7)
-        #PETScOptions.set(prefix + 'mat_mumps_icntl_12', 0)
+        #opts.setValue('mat_mumps_icntl_7', 7)
+        #opts.setValue('mat_mumps_icntl_12', 0)
 
-        # Pivotting options
-        #PETScOptions.set(prefix + 'mat_mumps_cntl_1', 1e-0)
-        #PETScOptions.set(prefix + 'mat_mumps_cntl_4', 1e-8)
+        # Pivotting threshold
+        #opts.setValue('mat_mumps_cntl_1', 1e-0)
+
+        # Static pivotting plus one iterative refinement step
+        opts.setValue('mat_mumps_cntl_4', 1e-8)
+        opts.setValue('mat_mumps_icntl_10', -1)
 
         self._solver = solver = PETScLUSolver('mumps')
+        #solver.set_options_prefix(opts.prefix) # Buggy
         solver.set_operator(self._A)
 
         # Allow Cholesky only with PETSc having fixed
@@ -213,18 +218,41 @@ class FluxReconstructor(object):
         if PETSc.Sys.getVersion() >= (3, 5, 3):
             solver.parameters['symmetric'] = True
 
+        # NOTE: KSPSetFromOptions is already called in constructor!
+        solver.ksp().setOptionsPrefix(opts.prefix)
+        solver.ksp().setFromOptions()
+
         t.stop()
 
 
-    def get_factor_info(self):
+    def options(self):
+        """Return PETSc Options database for all owned PETSc objects
+        """
+        opts = self.__dict__.get('_opts')
+        if not opts:
+            prefix = 'dolfin_%s_' % self.id()
+            opts = self._opts = PETSc.Options(prefix)
+        return opts
+
+
+    def __del__(self):
+        # Remove unused PETSc options to avoid database overflow
+        # NOTE: Rewrite maybe needed with PETSc 3.7, see
+        # https://bitbucket.org/petsc/petsc4py/commits/c6668262ee0af6e186e9f51641ae53bba3691be2
+        opts = self.options()
+        for k in opts.getAll().keys():
+            opts.delValue(k)
+
+
+    def get_info(self):
         """Return info about space dimensions, system matrix
         and factor matrix"""
         info_mat = self._A.mat().getInfo()
         info_fact = self._solver.ksp().getPC().getFactorMatrix().getInfo()
-        info = {"compressed dimension": self._W.dim(),
-                "uncompressed dimension": self._A.size(0),
-                "mat info": info_mat,
-                "fact info": info_fact,}
+        info = {"dim_full": self._W.dim(),
+                "dim_agg": self._A.size(0),
+                "mat_info": info_mat,
+                "fact_info": info_fact,}
         return info
 
 
@@ -273,9 +301,10 @@ class FluxReconstructor(object):
         x.init(tl_b)
 
         # Set unique options prefix for objects
-        A.mat().setOptionsPrefix('dolfin_%s_' % A.id())
-        b.vec().setOptionsPrefix('dolfin_%s_' % b.id())
-        x.vec().setOptionsPrefix('dolfin_%s_' % x.id())
+        prefix = self.options().prefix
+        A.mat().setOptionsPrefix(prefix)
+        b.vec().setOptionsPrefix(prefix)
+        x.vec().setOptionsPrefix(prefix)
 
         # Drop assembled zeros as our sparsity pattern counts for non-zeros only
         A.mat().setOption(PETSc.Mat.Option.IGNORE_ZERO_ENTRIES, True)

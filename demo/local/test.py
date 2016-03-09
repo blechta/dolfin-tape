@@ -47,9 +47,6 @@ parameters['form_compiler']['optimize'] = True
 
 parameters['plotting_backend'] = 'matplotlib'
 
-# Reduce pivotting of LU solver
-PETScOptions.set('mat_mumps_cntl_1', 0.001)
-
 
 def solve_problem(p, mesh, f, exact_solution=None):
     q = p/(p-1) # Dual Lebesgue exponent
