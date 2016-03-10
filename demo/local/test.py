@@ -67,7 +67,7 @@ def solve_problem(p, mesh, f, exact_solution=None):
     # Global lifting of W^{-1, p'} functional R = f + div(S)
     V_high = FunctionSpace(mesh, 'Lagrange', 2)
     criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
-        Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-3*sobolev_norm(u_h, p)**(p-1.0)
+        Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-2*sobolev_norm(u_h, p)**(p-1.0)
     parameters['form_compiler']['quadrature_degree'] = 8
     log(25, 'Computing global lifting of the resiual')
     u.set_allow_extrapolation(True)
@@ -151,7 +151,7 @@ def solve_problem(p, mesh, f, exact_solution=None):
         # Compute p-Laplace lifting on the patch on higher degree element
         V_loc = FunctionSpace(submesh, 'Lagrange', 4)
         criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
-            Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-3*sobolev_norm(u_h, p)**(p-1.0)
+            Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-2*sobolev_norm(u_h, p)**(p-1.0)
         parameters['form_compiler']['quadrature_degree'] = 8
         r = solve_p_laplace_adaptive(p, criterion, V_loc, f, S)
         parameters['form_compiler']['quadrature_degree'] = -1
