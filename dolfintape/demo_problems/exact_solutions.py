@@ -56,7 +56,7 @@ def pLaplace_modes(*args, **kwargs):
 
 
 def pLaplace_ChaillouSuri(p, *args, **kwargs):
-    u_code = "(pow(0.5, p1) + pow((x[0]-0.5)*(x[0]-0.5)+(x[1]-0.5)*(x[1]-0.5), p1))/p1"
+    u_code = "(pow(0.5, p1) + pow((x[0]-0.5)*(x[0]-0.5)+(x[1]-0.5)*(x[1]-0.5), 0.5*p1))/p1"
     f_code = "2.0"
     kwargs['p1'] = p/(p-1)
 
