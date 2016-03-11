@@ -206,8 +206,8 @@ class FluxReconstructor(Variable):
         #opts.setValue('mat_mumps_cntl_1', 1e-0)
 
         # Static pivotting plus one iterative refinement step
-        opts.setValue('mat_mumps_cntl_4', 1e-8)
-        opts.setValue('mat_mumps_icntl_10', -1)
+        #opts.setValue('mat_mumps_cntl_4', 1e-6)
+        #opts.setValue('mat_mumps_icntl_10', -1)
 
         self._solver = solver = PETScLUSolver('mumps')
         #solver.set_options_prefix(opts.prefix) # Buggy
