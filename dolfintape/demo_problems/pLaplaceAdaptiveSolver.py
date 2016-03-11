@@ -53,16 +53,20 @@ def solve_p_laplace_adaptive(p, criterion, V, f, df, u_ex=None,
 
 
 def geometric_progression(a0, q):
-    """Return generator taking values of geometric progression:
+    """Return function returning generator taking values
+    of geometric progression:
         a0,
         a0*q,
         a0*q**2,
         a0*q**3,
         ...
     """
-    while True:
-        yield a0
-        a0 *= q
+    def generator():
+        _a0 = a0
+        while True:
+            yield _a0
+            _a0 *= q
+    return generator
 
 
 class pLaplaceAdaptiveSolver(object):
@@ -204,9 +208,7 @@ class pLaplaceAdaptiveSolver(object):
 
         # Adapt regularization
         logn(25, 'Adapting regularization')
-        eps_last = self.__dict__.get('_eps_last') or epsilons.next()
-        for eps in chain([eps_last], epsilons):
-            self._eps_last = eps
+        for eps in epsilons():
             debug('Regularizing using eps = %s' % eps)
             logn(25, '.')
             result = self._solve(eps, u, reconstructor, P0)
