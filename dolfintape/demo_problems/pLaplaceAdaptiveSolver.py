@@ -19,6 +19,7 @@ from dolfin import *
 import ufl
 import matplotlib.pyplot as plt
 import numpy as np
+from itertools import chain
 
 from dolfintape import FluxReconstructor
 from dolfintape.utils import logn
@@ -203,7 +204,10 @@ class pLaplaceAdaptiveSolver(object):
 
         # Adapt regularization
         logn(25, 'Adapting regularization')
-        for eps in epsilons:
+        eps_last = self.__dict__.get('_eps_last') or epsilons.next()
+        for eps in chain([eps_last], epsilons):
+            self._eps_last = eps
+            debug('Regularizing using eps = %s' % eps)
             logn(25, '.')
             result = self._solve(eps, u, reconstructor, P0)
             u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
