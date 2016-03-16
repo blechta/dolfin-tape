@@ -299,6 +299,7 @@ def test_ChaillouSuri(p, N):
     from dolfintape.demo_problems.exact_solutions import pLaplace_ChaillouSuri
 
     mesh = UnitSquareMesh(N, N, 'crossed')
+    print("num cells %s" % mesh.num_cells())
     u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
     glob, loc = solve_problem(p, mesh, f, u)
 
@@ -316,6 +317,7 @@ def test_CarstensenKlose(p, N):
     b1 = mshr.Rectangle(Point(0.0, -1.0), Point(1.0, 0.0))
     mesh = mshr.generate_mesh(b0 - b1, N)
     mesh = mesh_fixup(mesh)
+    print("num cells %s" % mesh.num_cells())
 
     u, f = pLaplace_CarstensenKlose(p=p, eps=0.0, delta=7.0/8,
                                     domain=mesh, degree=4)
