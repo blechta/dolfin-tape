@@ -102,7 +102,21 @@ class FluxReconstructor(Variable):
         # Solve the system
         t = Timer('dolfintape: %s system for flux reconstruction' % task)
         assert self._solver, "Solver has not been initialized yet."
-        self._solver.solve(self._x, self._b)
+        try:
+            self._solver.solve(self._x, self._b)
+        except RuntimeError as e:
+            t.stop()
+            t = Timer('dolfintape: %s system for flux reconstruction'
+                      ' with static pivotting' % task)
+
+            # Enable static pivotting plus two iterative refinement steps
+            opts = self.options()
+            opts.setValue('mat_mumps_cntl_4', 1e-6)
+            opts.setValue('mat_mumps_icntl_10', -2)
+            self._solver.ksp().setFromOptions()
+
+            # Try again
+            self._solver.solve(self._x, self._b)
         t.stop()
 
         t = Timer('dolfintape: collect patch-wise flux reconstruction')
