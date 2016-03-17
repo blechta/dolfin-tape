@@ -115,7 +115,7 @@ class pLaplaceAdaptiveSolver(object):
                 break
 
             # Refine mesh
-            markers = self.estimator_to_markers(est_h, p/(p-1.0), aggressivity=2.5)
+            markers = self.estimator_to_markers(est_h, p/(p-1.0), fraction=0.5)
             log(25, 'Marked %s of %s cells for refinement'
                     % (sum(markers), markers.mesh().num_cells()))
             adapt(V.mesh(), markers)
@@ -219,12 +219,11 @@ class pLaplaceAdaptiveSolver(object):
         return result
 
 
-    @classmethod
-    def estimator_to_markers(cls, est, q, cf=None, aggressivity=1.0):
+    @staticmethod
+    def estimator_to_markers(est, q, cf=None, fraction=0.5):
         """Take double CellFunction and convert it to bool cell function
-        according to some marking strategy.
+        using Dorfler marking strategy.
         """
-        # FIXME: Remove aggressivity, add percentil
         assert isinstance(est, CellFunctionDouble)
 
         if cf is None:
@@ -232,15 +231,14 @@ class pLaplaceAdaptiveSolver(object):
         else:
             assert isinstance(cf, CellFunctionBool)
 
-        norm = sum(abs(v)**q for v in est)
-        norm = MPI.sum(est.mesh().mpi_comm(), norm)
-        norm = (norm/est.mesh().num_cells())**(1.0/q)
+        # Take appropriate powers (operating on a copy)
+        _est = MeshFunction('double', est)
+        np.abs(_est.array(), out=_est.array())
+        _est.array()[:] **= q
 
-        for c in cells(est.mesh()):
-            cf[c] = abs(est[c]) > aggressivity*norm
-
-        if sum(cf) == 0:
-            cls.estimator_to_markers(est, q, cf=cf, aggressivity=0.5*aggressivity)
+        # Call Dorfler marking
+        not_working_in_parallel("Dorfler marking strategy")
+        dorfler_mark(cf, _est, fraction)
 
         return cf
 
