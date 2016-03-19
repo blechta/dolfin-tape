@@ -38,6 +38,7 @@ def hat_function_collection(vertex_colors, color, element=None):
     assert element.family() in ['Lagrange', 'Discontinuous Lagrange']
     assert element.degree() == 1
     ufc_element, ufc_dofmap = jit(element, mpi_comm=mesh.mpi_comm())
+    ufc_element = make_ufc_finite_element(ufc_element)
     dolfin_element = cpp.FiniteElement(ufc_element)
 
     e = Expression(hats_cpp_code, element=element, domain=mesh)
@@ -86,6 +87,7 @@ def hat_function(vertex):
     mesh = vertex.mesh()
     element = FiniteElement('Lagrange', mesh.ufl_cell(), 1)
     ufc_element, ufc_dofmap = jit(element, mpi_comm=mesh.mpi_comm())
+    ufc_element = make_ufc_finite_element(ufc_element)
     dolfin_element = cpp.FiniteElement(ufc_element)
 
     e = Expression(hat_cpp_code, element=element, domain=mesh)
@@ -153,3 +155,9 @@ def hat_function_grad(vertex, cell):
     # Return norm of gradient
     assert d != 0.0, "Degenerate cell!"
     return 1.0/abs(d)
+
+
+try: # DOLFIN 1.7.0
+    make_ufc_finite_element = cpp.make_ufc_finite_element
+except AttributeError: # DOLFIN 1.6.0
+    make_ufc_finite_element = lambda x: x

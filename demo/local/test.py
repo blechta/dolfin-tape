@@ -25,7 +25,6 @@ its residual in W^{-1,q} to demonstrate localization result of
 from __future__ import print_function
 
 from dolfin import *
-import ufc
 import numpy as np
 import os
 
@@ -98,10 +97,9 @@ def solve_problem(p, mesh, f, exact_solution=None):
     dr_glob_p1_vec = dr_glob_p1.vector()
     x = np.ndarray(mesh.geometry().dim())
     val = np.ndarray(1)
-    c_ufc = ufc.cell() # FIXME: Is empty ufc cell sufficient?
     v2d = vertex_to_dof_map(P1)
     for c in cells(mesh):
-        dr_glob_coarse.eval(val, x, c, c_ufc)
+        dr_glob_coarse.eval(val, x, c, c)
         for v in vertices(c):
             # FIXME: it would be better to assemble vector once
             vol_cell = c.volume()
@@ -324,7 +322,9 @@ def test_CarstensenKlose(p, N):
     # There are some problems with quadrature element,
     # see https://bitbucket.org/fenics-project/ffc/issues/84,
     # so project to Lagrange element
-    f = project(f, FunctionSpace(mesh, 'Lagrange', 4))
+    f = project(f, FunctionSpace(mesh, 'Lagrange', 4),
+                form_compiler_parameters=
+                    {'quadrature_degree': f.ufl_element().degree()})
     f.set_allow_extrapolation(True)
 
     glob, loc = solve_problem(p, mesh, f, u)

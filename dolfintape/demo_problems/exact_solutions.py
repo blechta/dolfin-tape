@@ -83,7 +83,8 @@ def pLaplace_CarstensenKlose(*args, **kwargs):
     kwargs_f = kwargs.copy()
     kwargs_f['element'] = FiniteElement('Quadrature',
                                         kwargs_f['domain'].ufl_cell(),
-                                        kwargs_f.pop('degree'))
+                                        kwargs_f.pop('degree'),
+                                        quad_scheme='default')
 
     return [Expression(u_code, *args, **kwargs),
             Expression(f_code, *args, **kwargs_f)]
