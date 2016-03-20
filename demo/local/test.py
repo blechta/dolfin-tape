@@ -289,7 +289,7 @@ def plot_liftings(glob, loc, prefix):
     pyplot.savefig(os.path.join(path, prefix+"f.pdf"))
     plot_alongside(glob, loc, mode="color", shading="gouraud")
     pyplot.savefig(os.path.join(path, prefix+"g.pdf"))
-    plot_alongside(glob, loc, mode="warp")
+    plot_alongside(glob, loc, mode="warp", range_min=0.0)
     pyplot.savefig(os.path.join(path, prefix+"w.pdf"))
 
 

@@ -63,7 +63,12 @@ def plot_alongside(*args, **kwargs):
         pyplot.subplot(1, n, i+1, projection=projection)
         p = plot(args[i], backend="matplotlib", **kwargs)
 
-    pyplot.tight_layout()
+        # Set zrange for warp plots
+        if kwargs.get("mode") == "warp":
+            ax = pyplot.gca(projection="3d")
+            ax.set_zlim(kwargs["range_min"], kwargs["range_max"])
+
+    pyplot.tight_layout(w_pad=1.5)
 
     # Create colorbar
     pyplot.subplots_adjust(right=0.8)
