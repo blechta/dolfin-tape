@@ -338,12 +338,15 @@ def main(argv):
             ('ChaillouSuri',   10.0,  5),
             ('ChaillouSuri',   10.0, 10),
             ('ChaillouSuri',   10.0, 15),
+            ('ChaillouSuri',   10.0, 20),
             ('ChaillouSuri',    1.5,  5),
             ('ChaillouSuri',    1.5, 10),
             ('ChaillouSuri',    1.5, 15),
+            ('ChaillouSuri',    1.5, 20),
             ('CarstensenKlose', 4.0,  5),
             ('CarstensenKlose', 4.0, 10),
             ('CarstensenKlose', 4.0, 15),
+            ('CarstensenKlose', 4.0, 20),
         ]
 
     usage = """%s
