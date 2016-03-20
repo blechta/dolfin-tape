@@ -89,24 +89,8 @@ def solve_problem(p, mesh, f, exact_solution=None):
     else:
         info_blue(r"||\nabla r||_p^{p-1} = %g" % r_norm_glob)
 
-    # Compute patch-wise norm of global lifting
-    P1 = V
-    assert P1.ufl_element().family() == 'Lagrange' \
-            and P1.ufl_element().degree() == 1
-    dr_glob_p1 = Function(P1)
-    dr_glob_p1_vec = dr_glob_p1.vector()
-    x = np.ndarray(mesh.geometry().dim())
-    val = np.ndarray(1)
-    v2d = vertex_to_dof_map(P1)
-    for c in cells(mesh):
-        dr_glob_coarse.eval(val, x, c, c)
-        for v in vertices(c):
-            # FIXME: it would be better to assemble vector once
-            vol_cell = c.volume()
-            vol_patch = sum(c.volume() for c in cells(v))
-            dof = v2d[v.index()]
-            dr_glob_p1_vec[dof] = dr_glob_p1_vec[dof][0] \
-                                + val[0]*vol_cell/vol_patch
+    # Compute cell-wise norms of global lifting to patches
+    dr_glob_p1 = distribute_p0_to_p1(dr_glob_coarse, Function(V))
 
     # Lower estimate on ||R|| using exact solution
     if exact_solution:
@@ -280,6 +264,47 @@ def compute_cellwise_grad(r, p):
         x_coarse[dofs_coarse(parent_cells[i])] += scale * x_fine[dofs_fine(i)]
 
     return dr_fine, dr_coarse
+
+
+def distribute_p0_to_p1(f, out=None):
+    """Distribute P0 function to P1 function s.t.
+
+        g = \sum_{a \in vertices} \sum_{K \ni a} f_K |K|/|\omega_a|
+
+    Returns P1 function g.
+    """
+    P0 = f.function_space()
+    mesh = P0.mesh()
+    if out is None:
+        P1 = FunctionSpace(mesh, 'Lagrange', 1)
+        out = Function(P1)
+    else:
+        P1 = out.function_space()
+
+    # Sanity check
+    assert P0.ufl_element().family() == 'Discontinuous Lagrange'
+    assert P0.ufl_element().degree() == 0
+    assert P0.ufl_element().value_shape() == ()
+    assert P1.ufl_element().family() == 'Lagrange'
+    assert P1.ufl_element().degree() == 1
+    assert P1.ufl_element().value_shape() == ()
+
+    vec = out.vector()
+    x = np.ndarray(mesh.geometry().dim()) # Dummy coord
+    val = np.ndarray(1)
+    v2d = vertex_to_dof_map(P1)
+
+    # Collect contribution from cells
+    for c in cells(mesh):
+        f.eval(val, x, c, c)
+        for v in vertices(c):
+            # FIXME: it would be faster to assemble vector just once
+            vol_cell = c.volume()
+            vol_patch = sum(c.volume() for c in cells(v))
+            dof = v2d[v.index()]
+            vec[dof] = vec[dof][0] + val[0]*vol_cell/vol_patch
+
+    return out
 
 
 def plot_liftings(glob, loc, prefix):
