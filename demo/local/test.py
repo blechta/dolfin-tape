@@ -42,19 +42,30 @@ not_working_in_parallel('This')
 
 parameters['form_compiler']['optimize'] = True
 
-parameters['plotting_backend'] = 'matplotlib'
 
-
-def solve_problem(p, mesh, f, exact_solution=None):
+def compute_liftings(p, mesh, f, exact_solution=None):
+    r"""Find approximation to p-Laplace problem with rhs f,
+    and compute global and local liftings of the residual.
+    Return tuple (
+        \sum_a ||\nabla r  ||_{p,\omega_a}^p N/|\omega_a| \psi_a,
+        \sum_a ||\nabla r^a||_{p,\omega_a}^p N/|\omega_a| \psi_a,
+        C_{cont,PF},
+        ||\nabla r||_p^{p-1},
+        ( \sum_a ||\nabla r_a||_p^p )^{1/q},
+        Eff_{(3.8a)},
+        Eff_{(3.8b)}
+    ). First two are P1 functions, the rest are numbers.
+    """
     q = p/(p-1) # Dual Lebesgue exponent
+    N = mesh.topology().dim() + 1 # Vertices per cell
 
     # Check that mesh is the coarsest one
     assert mesh.id() == mesh.root_node().id()
 
     # Get Galerkin approximation of p-Laplace problem -\Delta_p u = f
+    log(25, 'Computing residual of p-Laplace problem')
     V = FunctionSpace(mesh, 'Lagrange', 1)
     criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: Est_eps <= 1e-6*Est_tot
-    log(25, 'Computing residual of p-Laplace problem')
     u = solve_p_laplace_adaptive(p, criterion, V, f,
                                  zero(mesh.geometry().dim()), exact_solution)
 
@@ -62,39 +73,72 @@ def solve_problem(p, mesh, f, exact_solution=None):
     S = inner(grad(u), grad(u))**(0.5*Constant(p)-1.0) * grad(u)
 
     # Global lifting of W^{-1, p'} functional R = f + div(S)
-    V_high = FunctionSpace(mesh, 'Lagrange', 2)
-    criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
-        Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-2*sobolev_norm(u_h, p)**(p-1.0)
-    parameters['form_compiler']['quadrature_degree'] = 8
-    log(25, 'Computing global lifting of the resiual')
-    u.set_allow_extrapolation(True)
-    r_glob = solve_p_laplace_adaptive(p, criterion, V_high, f, S)
+    u.set_allow_extrapolation(True) # Needed hack
+    r_glob = compute_global_lifting(p, mesh, f, S)
     u.set_allow_extrapolation(False)
-    parameters['form_compiler']['quadrature_degree'] = -1
 
     # Compute cell-wise norm of global lifting
     dr_glob_fine, dr_glob_coarse = compute_cellwise_grad(r_glob, p)
-    r_norm_glob = sobolev_norm(r_glob, p)**(p/q)
-    try:
-        e_norm_coarse = assemble(dr_glob_coarse*dx)
-        e_norm_fine = assemble(dr_glob_fine*dx)
-        N = mesh.topology().dim() + 1 # vertices per cell
-        assert np.isclose(e_norm_fine, N*r_norm_glob**q)
-        assert np.isclose(e_norm_coarse, N*r_norm_glob**q)
-    except AssertionError:
-        info_red(r"N*||\nabla r||_p^p = %g, %g, %g"
-                % (e_norm_coarse, e_norm_fine, N*r_norm_glob**q))
-    else:
-        info_blue(r"||\nabla r||_p^{p-1} = %g" % r_norm_glob)
 
-    # Compute cell-wise norms of global lifting to patches
+    # Norm of global lifting, equal to norm of residual
+    r_norm_glob = sobolev_norm(r_glob, p)**(p/q)
+    assert np.isclose(assemble(dr_glob_fine  *dx), N*r_norm_glob**q)
+    assert np.isclose(assemble(dr_glob_coarse*dx), N*r_norm_glob**q)
+
+    # Distribute cell-wise norms of global lifting to patches
     dr_glob_p1 = distribute_p0_to_p1(dr_glob_coarse, Function(V))
 
-    # P1 lifting of local residuals
-    P1 = V
+    # Compute local liftings
+    r_norm_loc, r_loc_p1 = compute_local_liftings(p, V, f, S)
+
+    # Check effectivity of localization estimates
+    C_PF = poincare_friedrichs_cutoff(mesh, p)
+    ratio_a = ( N**(1.0/p) * C_PF * r_norm_loc ) / r_norm_glob
+    ratio_b = ( N**(1.0/q) * r_norm_glob ) / r_norm_loc
+    assert ratio_a >= 1.0 and ratio_b >= 1.0
+
+    # Report
+    info_blue(r"||\nabla r||_p^{p-1} = %g, ( \sum_a ||\nabla r_a||_p^p )^{1/q} = %g"
+              % (r_norm_glob, r_norm_loc))
+    info_blue("C_{cont,PF} = %g" %  C_PF)
+    info_green("(3.8a) ok: rhs/lhs = %g >= 1" % ratio_a)
+    info_green("(3.8b) ok: rhs/lhs = %g >= 1" % ratio_b)
+
+    return dr_glob_p1, r_loc_p1, C_PF, r_norm_glob, r_norm_loc, ratio_a, ratio_b
+
+
+def compute_global_lifting(p, mesh, f, S):
+    """Return global lifting of
+        R = f + div S
+    """
+    log(25, 'Computing global lifting of the resiual')
+
+    # Use higher order space and better quadrature
+    V_high = FunctionSpace(mesh, 'Lagrange', 2)
+    parameters['form_compiler']['quadrature_degree'] = 8
+
+    # Compute lifting adaptively
+    criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
+        Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-2*sobolev_norm(u_h, p)**(p-1.0)
+    r_glob = solve_p_laplace_adaptive(p, criterion, V_high, f, S)
+
+    # Rollback side-effect
+    parameters['form_compiler']['quadrature_degree'] = -1
+
+    return r_glob
+
+
+def compute_local_liftings(p, P1, f, S):
+    """Compute local liftings of
+        R = f + div S
+    and return global norm of liftings and P1 representation
+    of patch-wise norms."
+    """
     assert P1.ufl_element().family() == 'Lagrange'
     assert P1.ufl_element().degree() == 1
     assert P1.ufl_element().value_shape() == ()
+    mesh = P1.mesh()
+
     r_loc_p1 = Function(P1)
     r_loc_p1_dofs = r_loc_p1.vector()
     v2d = vertex_to_dof_map(P1)
@@ -113,7 +157,7 @@ def solve_problem(p, mesh, f, exact_solution=None):
             cf[c] = 1
         submesh = SubMesh(mesh, cf, 1)
 
-        # Compute p-Laplace lifting on the patch on higher degree element
+        # Compute p-Laplace lifting on the patch using higher order element
         V_loc = FunctionSpace(submesh, 'Lagrange', 4)
         criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: \
             Est_eps <= 1e-2*Est_tot and Est_tot <= 1e-2*sobolev_norm(u_h, p)**(p-1.0)
@@ -136,32 +180,15 @@ def solve_problem(p, mesh, f, exact_solution=None):
     # Recover original verbosity
     set_log_level(old_log_level)
 
+    # Take q-root of sum finally
+    q = p/(p-1)
     r_norm_loc **= 1.0/q
-    try:
-        e_norm = assemble(r_loc_p1*dx)
-        assert np.isclose(e_norm, r_norm_loc**q)
-    except AssertionError:
-        info_red(r"||e||_q^q = %g, \sum_a ||\nabla r_a||_p^p = %g"
-                % (e_norm, r_norm_loc**q))
 
-    info_blue(r"||\nabla r||_p^{p-1} = %g, ( \sum_a ||\nabla r_a||_p^p )^{1/q} = %g"
-              % (r_norm_glob, r_norm_loc))
+    # Sanity check
+    e_norm = assemble(r_loc_p1*dx)
+    assert np.isclose(e_norm, r_norm_loc**q)
 
-    N = mesh.topology().dim() + 1 # vertices per cell
-    C_PF = poincare_friedrichs_cutoff(mesh, p)
-    ratio_a = ( N**(1.0/p) * C_PF * r_norm_loc ) / r_norm_glob
-    ratio_b = ( N**(1.0/q) * r_norm_glob ) / r_norm_loc
-    info_blue("C_{cont,PF} = %g" %  C_PF)
-    if ratio_a >= 1.0:
-        info_green("(3.7a) ok: rhs/lhs = %g >= 1" % ratio_a)
-    else:
-        info_red("(3.7a) bad: rhs/lhs = %g < 1" % ratio_a)
-    if ratio_b >= 1.0:
-        info_green("(3.7b) ok: rhs/lhs = %g >= 1" % ratio_b)
-    else:
-        info_red("(3.7b) bad: rhs/lhs = %g < 1" % ratio_b)
-
-    return dr_glob_p1, r_loc_p1
+    return r_norm_loc, r_loc_p1
 
 
 def compute_cellwise_grad(r, p):
@@ -226,7 +253,7 @@ def compute_cellwise_grad(r, p):
 
 
 def distribute_p0_to_p1(f, out=None):
-    """Distribute P0 function to P1 function s.t.
+    r"""Distribute P0 function to P1 function s.t.
 
         g = \sum_{a \in vertices} \sum_{K \ni a} f_K |K|/|\omega_a|
 
@@ -277,14 +304,30 @@ def plot_liftings(glob, loc, prefix):
     pyplot.savefig(os.path.join(path, prefix+"w.pdf"))
 
 
+def format_result(*args):
+    assert len(args) == 8
+    assert isinstance(args[0], str) and len(args[0].split()) == 1
+    assert isinstance(args[2], int)
+    assert all(isinstance(args[i], float) for i in [1]+range(3, 8))
+    print("#RESULT name, p, num_cells, C_{cont,PF}, " \
+          "N^{-1/q}||E_glob||_q, ||E_loc||_q, Eff_(4.8a), Eff_(4.8b)")
+    print("RESULT %s %s %s %.3f %.4f %.4f %.1f %.2f" % args)
+
+
 def test_ChaillouSuri(p, N):
     from dolfintape.demo_problems.exact_solutions import pLaplace_ChaillouSuri
 
+    # Fetch exact solution and rhs of p-Laplacian
     mesh = UnitSquareMesh(N, N, 'crossed')
     print("num cells %s" % mesh.num_cells())
     u, f = pLaplace_ChaillouSuri(p, domain=mesh, degree=4)
-    glob, loc = solve_problem(p, mesh, f, u)
 
+    # Now the heavy lifting
+    result = compute_liftings(p, mesh, f, u)
+    glob, loc = result[0], result[1]
+
+    # Report
+    format_result('Chaillou-Suri', p, mesh.num_cells(), *result[2:])
     plot_liftings(glob, loc, 'ChaillouSuri_%s_%s' % (p, N))
     list_timings(TimingClear_clear, [TimingType_wall])
 
@@ -301,6 +344,7 @@ def test_CarstensenKlose(p, N):
     mesh = mesh_fixup(mesh)
     print("num cells %s" % mesh.num_cells())
 
+    # Fetch exact solution and rhs of p-Laplacian
     u, f = pLaplace_CarstensenKlose(p=p, eps=0.0, delta=7.0/8,
                                     domain=mesh, degree=4)
     # There are some problems with quadrature element,
@@ -311,8 +355,12 @@ def test_CarstensenKlose(p, N):
                     {'quadrature_degree': f.ufl_element().degree()})
     f.set_allow_extrapolation(True)
 
-    glob, loc = solve_problem(p, mesh, f, u)
+    # Now the heavy lifting
+    result = compute_liftings(p, mesh, f, u)
+    glob, loc = result[0], result[1]
 
+    # Report
+    format_result('Carstensen-Klose', p, mesh.num_cells(), *result[2:])
     plot_liftings(glob, loc, 'CarstensenKlose_%s_%s' % (p, N))
     list_timings(TimingClear_clear, [TimingType_wall])
 

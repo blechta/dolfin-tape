@@ -68,7 +68,7 @@ def plot_alongside(*args, **kwargs):
             ax = pyplot.gca(projection="3d")
             ax.set_zlim(kwargs["range_min"], kwargs["range_max"])
 
-    pyplot.tight_layout(w_pad=1.5)
+    pyplot.tight_layout(w_pad=3.5)
 
     # Create colorbar
     pyplot.subplots_adjust(right=0.8)
