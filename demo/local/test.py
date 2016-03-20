@@ -29,8 +29,6 @@ import numpy as np
 import os
 
 from dolfintape.poincare import poincare_friedrichs_cutoff
-from dolfintape.hat_function import hat_function
-from dolfintape.extension import Extension
 from dolfintape.plotting import plot_alongside, pyplot
 from dolfintape.utils import mkdir_p, list_timings
 from dolfintape.demo_problems import solve_p_laplace_adaptive
@@ -92,30 +90,15 @@ def solve_problem(p, mesh, f, exact_solution=None):
     # Compute cell-wise norms of global lifting to patches
     dr_glob_p1 = distribute_p0_to_p1(dr_glob_coarse, Function(V))
 
-    # Lower estimate on ||R|| using exact solution
-    if exact_solution:
-        v = TestFunction(V)
-        R = ( inner(S, grad(v)) - f*v ) * dx(mesh)
-        # FIXME: Possible cancellation due to underintegrating?!
-        r_norm_glob_low = assemble(action(R, u)-action(R, exact_solution)) \
-                / sobolev_norm(u - exact_solution, p)
-        info_blue("||R||_{-1,q} >= %g (estimate using exact solution)"
-                  % r_norm_glob_low)
-
     # P1 lifting of local residuals
     P1 = V
-    assert P1.ufl_element().family() == 'Lagrange' \
-            and P1.ufl_element().degree() == 1
+    assert P1.ufl_element().family() == 'Lagrange'
+    assert P1.ufl_element().degree() == 1
+    assert P1.ufl_element().value_shape() == ()
     r_loc_p1 = Function(P1)
     r_loc_p1_dofs = r_loc_p1.vector()
     v2d = vertex_to_dof_map(P1)
-
-    # Alterative local lifting of residual
-    # FIXME: Does this have a sense? Do we need it?
     r_norm_loc = 0.0
-    P4 = FunctionSpace(mesh, 'Lagrange', 4)
-    r_loc = Function(P4)
-    r_loc_temp = Function(P4)
 
     # Adjust verbosity
     old_log_level = get_log_level()
@@ -144,30 +127,6 @@ def solve_problem(p, mesh, f, exact_solution=None):
         scale = (mesh.topology().dim() + 1) / sum(c.volume() for c in cells(v))
         r_loc_p1_dofs[v2d[v.index()]] = r_norm_loc_a * scale
         log(18, r"||\nabla r_a||_p = %g" % r_norm_loc_a**(1.0/p))
-
-        # Alternative local lifting
-        r = Extension(r, domain=mesh)
-        r_loc_temp.interpolate(r)
-        #project(r, V=r_loc_temp.function_space(), function=r_loc_temp, solver_type='lu')
-        r_loc.vector()[:] += r_loc_temp.vector()
-
-        # Lower estimate on ||R||_a using exact solution
-        if exact_solution:
-            # FIXME: Treat hat as P1 test function to save resources
-
-            # Prepare hat function on submesh
-            parent_indices = submesh.data().array('parent_vertex_indices', 0)
-            submesh_index = np.where(parent_indices == v.index())[0][0]
-            assert parent_indices[submesh_index] == v.index()
-            hat = hat_function(Vertex(submesh, submesh_index))
-
-            # Compute residual lower bound
-            phi = TestFunction(V_loc)
-            R = lambda phi: ( inner(S, grad(phi)) - f*phi ) * dx(submesh)
-            r_norm_loc_low = assemble(R(hat*u) - R(hat*exact_solution)) \
-                    / sobolev_norm(hat*(u - exact_solution), p, domain=submesh)
-            log(18, r"||R||_{-1,q,\omega_a} >= %g (estimate using exact solution)"
-                    % r_norm_loc_low)
 
         # Advance progress bar
         set_log_level(PROGRESS)
