@@ -49,12 +49,13 @@ def compute_liftings(p, mesh, f, exact_solution=None):
     Return tuple (
         \sum_a ||\nabla r  ||_{p,\omega_a}^p N/|\omega_a| \psi_a,
         \sum_a ||\nabla r^a||_{p,\omega_a}^p N/|\omega_a| \psi_a,
+        \sum_a ||\nabla(u-u_h)||_{p,\omega_a}^p 1/|\omega_a| \psi_a,
         C_{cont,PF},
         ||\nabla r||_p^{p-1},
         ( \sum_a ||\nabla r_a||_p^p )^{1/q},
         Eff_{(3.8a)},
         Eff_{(3.8b)}
-    ). First two are P1 functions, the rest are numbers.
+    ). First three are P1 functions, the rest are numbers.
     """
     q = p/(p-1) # Dual Lebesgue exponent
     N = mesh.topology().dim() + 1 # Vertices per cell
@@ -102,11 +103,13 @@ def compute_liftings(p, mesh, f, exact_solution=None):
         ee_coarse.vector().__imul__(1.0/N) # take back the scaling
         ee_p1 = distribute_p0_to_p1(ee_coarse, Function(V))
         ee = sobolev_norm(exact_solution-u, p)
-        print(assemble(ee_fine*dx), assemble(ee_coarse*dx), assemble(ee_p1*dx), ee**p)
         assert np.isclose(assemble(ee_fine  *dx), ee**p)
         assert np.isclose(assemble(ee_coarse*dx), ee**p)
         assert np.isclose(assemble(ee_p1    *dx), ee**p)
         info_blue(r"||\nabla(u-u_h)||_p^p = %g" % ee**p)
+    else:
+        ee_p1 = None
+
 
     # Check effectivity of localization estimates
     C_PF = poincare_friedrichs_cutoff(mesh, p)
@@ -121,7 +124,7 @@ def compute_liftings(p, mesh, f, exact_solution=None):
     info_green("(3.8a) ok: rhs/lhs = %g >= 1" % ratio_a)
     info_green("(3.8b) ok: rhs/lhs = %g >= 1" % ratio_b)
 
-    return dr_glob_p1, r_loc_p1, C_PF, r_norm_glob, r_norm_loc, ratio_a, ratio_b
+    return dr_glob_p1, r_loc_p1, ee_p1, C_PF, r_norm_glob, r_norm_loc, ratio_a, ratio_b
 
 
 def compute_global_lifting(p, mesh, f, S):
@@ -321,6 +324,12 @@ def plot_liftings(glob, loc, prefix):
     pyplot.savefig(os.path.join(path, prefix+"w.pdf"))
 
 
+def rescale_function(f, g):
+    """Rescale function f such that it has same maximal value as g
+    """
+    f.vector().__imul__(g.vector().max()/f.vector().max())
+
+
 def format_result(*args):
     assert len(args) == 8
     assert isinstance(args[0], str) and len(args[0].split()) == 1
@@ -341,11 +350,13 @@ def test_ChaillouSuri(p, N):
 
     # Now the heavy lifting
     result = compute_liftings(p, mesh, f, u)
-    glob, loc = result[0], result[1]
+    glob, loc, ee = result[0], result[1], result[2]
 
     # Report
-    format_result('Chaillou-Suri', p, mesh.num_cells(), *result[2:])
+    format_result('Chaillou-Suri', p, mesh.num_cells(), *result[3:])
     plot_liftings(glob, loc, 'ChaillouSuri_%s_%s' % (p, N))
+    rescale_function(ee, glob)
+    plot_liftings(glob, ee,  'ChaillouSuri_%s_%s_ee' % (p, N))
     list_timings(TimingClear_clear, [TimingType_wall])
 
 
@@ -374,11 +385,13 @@ def test_CarstensenKlose(p, N):
 
     # Now the heavy lifting
     result = compute_liftings(p, mesh, f, u)
-    glob, loc = result[0], result[1]
+    glob, loc, ee = result[0], result[1], result[2]
 
     # Report
-    format_result('Carstensen-Klose', p, mesh.num_cells(), *result[2:])
+    format_result('Carstensen-Klose', p, mesh.num_cells(), *result[3:])
     plot_liftings(glob, loc, 'CarstensenKlose_%s_%s' % (p, N))
+    rescale_function(ee, glob)
+    plot_liftings(glob, ee,  'CarstensenKlose_%s_%s_ee' % (p, N))
     list_timings(TimingClear_clear, [TimingType_wall])
 
 
