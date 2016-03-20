@@ -80,16 +80,33 @@ def compute_liftings(p, mesh, f, exact_solution=None):
     # Compute cell-wise norm of global lifting
     dr_glob_fine, dr_glob_coarse = compute_cellwise_grad(r_glob, p)
 
-    # Norm of global lifting, equal to norm of residual
-    r_norm_glob = sobolev_norm(r_glob, p)**(p/q)
-    assert np.isclose(assemble(dr_glob_fine  *dx), N*r_norm_glob**q)
-    assert np.isclose(assemble(dr_glob_coarse*dx), N*r_norm_glob**q)
-
     # Distribute cell-wise norms of global lifting to patches
     dr_glob_p1 = distribute_p0_to_p1(dr_glob_coarse, Function(V))
 
+    # Norm of global lifting, equal to norm of residual
+    r_norm_glob = sobolev_norm(r_glob, p)**(p/q)
+
+    # Sanity check
+    assert np.isclose(assemble(dr_glob_fine  *dx), N*r_norm_glob**q)
+    assert np.isclose(assemble(dr_glob_coarse*dx), N*r_norm_glob**q)
+    assert np.isclose(assemble(dr_glob_p1    *dx), N*r_norm_glob**q)
+
     # Compute local liftings
     r_norm_loc, r_loc_p1 = compute_local_liftings(p, V, f, S)
+
+    # Compute energy error
+    if exact_solution:
+        ee_fine, ee_coarse = compute_cellwise_grad(exact_solution-u, p,
+                                 mesh_fine=u.function_space().mesh())
+        ee_fine  .vector().__imul__(1.0/N) # take back the scaling
+        ee_coarse.vector().__imul__(1.0/N) # take back the scaling
+        ee_p1 = distribute_p0_to_p1(ee_coarse, Function(V))
+        ee = sobolev_norm(exact_solution-u, p)
+        print(assemble(ee_fine*dx), assemble(ee_coarse*dx), assemble(ee_p1*dx), ee**p)
+        assert np.isclose(assemble(ee_fine  *dx), ee**p)
+        assert np.isclose(assemble(ee_coarse*dx), ee**p)
+        assert np.isclose(assemble(ee_p1    *dx), ee**p)
+        info_blue(r"||\nabla(u-u_h)||_p^p = %g" % ee**p)
 
     # Check effectivity of localization estimates
     C_PF = poincare_friedrichs_cutoff(mesh, p)
@@ -191,7 +208,7 @@ def compute_local_liftings(p, P1, f, S):
     return r_norm_loc, r_loc_p1
 
 
-def compute_cellwise_grad(r, p):
+def compute_cellwise_grad(r, p, mesh_fine=None):
     r"""Return fine and coarse P0 functions representing cell-wise
     L^p norm of grad(r), i.e. functions having values
 
@@ -208,7 +225,7 @@ def compute_cellwise_grad(r, p):
     for both returned functions D.
     """
     # Compute desired quantity accurately on fine mesh
-    mesh_fine = r.function_space().mesh()
+    mesh_fine = mesh_fine or r.function_space().mesh()
     P0_fine = FunctionSpace(mesh_fine, 'Discontinuous Lagrange', 0)
     dr_fine = project((grad(r)**2)**Constant(0.5*p), P0_fine)
 
@@ -219,7 +236,7 @@ def compute_cellwise_grad(r, p):
     # Special case
     mesh_coarse = mesh_fine.root_node()
     if mesh_fine.id() == mesh_coarse.id():
-        return dr_fine, dr_fine
+        return dr_fine, dr_fine.copy(deepcopy=True)
 
     # Compute parent cells from finest to coarsest
     mesh = mesh_fine
