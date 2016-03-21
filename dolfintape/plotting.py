@@ -35,9 +35,13 @@ __all__ = ["plot_alongside", "pyplot"]
 
 def plot_alongside(*args, **kwargs):
     """Plot supplied functions in single figure with common colorbar.
+    Separate colorbars may be requeste by kwarg 'common_cbar=False'.
     User may supply 'range_min' and 'range_max' in kwargs.
     """
-    if not kwargs.has_key("range_min") or not kwargs.has_key("range_max"):
+    common_cbar = kwargs.pop("common_cbar", True)
+
+    if common_cbar and \
+            (not kwargs.has_key("range_min") or not kwargs.has_key("range_max")):
         # Look for common range of plot
         m, M = np.inf, -np.inf
         for f in args:
@@ -64,13 +68,18 @@ def plot_alongside(*args, **kwargs):
         p = plot(args[i], backend="matplotlib", **kwargs)
 
         # Set zrange for warp plots
-        if kwargs.get("mode") == "warp":
+        if common_cbar and kwargs.get("mode") == "warp":
             ax = pyplot.gca(projection="3d")
             ax.set_zlim(kwargs["range_min"], kwargs["range_max"])
 
+        # Create colorbar to each subplot if requested
+        if not common_cbar:
+            pyplot.colorbar(p)
+
     pyplot.tight_layout(w_pad=3.5)
 
-    # Create colorbar
-    pyplot.subplots_adjust(right=0.8)
-    cbar_ax = pyplot.gcf().add_axes([0.85, 0.15, 0.05, 0.7])
-    pyplot.colorbar(p, cax=cbar_ax)
+    # Create common colorbar by default
+    if common_cbar:
+        pyplot.subplots_adjust(right=0.8)
+        cbar_ax = pyplot.gcf().add_axes([0.85, 0.15, 0.05, 0.7])
+        pyplot.colorbar(p, cax=cbar_ax)

@@ -313,21 +313,23 @@ def distribute_p0_to_p1(f, out=None):
     return out
 
 
-def plot_liftings(glob, loc, prefix):
+def plot_liftings(glob, loc, ee, prefix):
     path = "results"
     mkdir_p(path)
+    # Plot global and local lifting norms on patches
     plot_alongside(glob, loc, mode="color", shading="flat", edgecolors="k")
-    pyplot.savefig(os.path.join(path, prefix+"f.pdf"))
+    pyplot.savefig(os.path.join(path, prefix+"_f.pdf"))
     plot_alongside(glob, loc, mode="color", shading="gouraud")
-    pyplot.savefig(os.path.join(path, prefix+"g.pdf"))
+    pyplot.savefig(os.path.join(path, prefix+"_g.pdf"))
     plot_alongside(glob, loc, mode="warp", range_min=0.0)
-    pyplot.savefig(os.path.join(path, prefix+"w.pdf"))
-
-
-def rescale_function(f, g):
-    """Rescale function f such that it has same maximal value as g
-    """
-    f.vector().__imul__(g.vector().max()/f.vector().max())
+    pyplot.savefig(os.path.join(path, prefix+"_w.pdf"))
+    # Plot global lifting and energy error norms on patches
+    plot_alongside(glob, ee, common_cbar=False, mode="color", shading="flat", edgecolors="k")
+    pyplot.savefig(os.path.join(path, prefix+"_ee_f.pdf"))
+    plot_alongside(glob, ee, common_cbar=False, mode="color", shading="gouraud")
+    pyplot.savefig(os.path.join(path, prefix+"_ee_g.pdf"))
+    plot_alongside(glob, ee, common_cbar=False, mode="warp", range_min=0.0)
+    pyplot.savefig(os.path.join(path, prefix+"_ee_w.pdf"))
 
 
 def format_result(*args):
@@ -354,9 +356,7 @@ def test_ChaillouSuri(p, N):
 
     # Report
     format_result('Chaillou-Suri', p, mesh.num_cells(), *result[3:])
-    plot_liftings(glob, loc, 'ChaillouSuri_%s_%s' % (p, N))
-    rescale_function(ee, glob)
-    plot_liftings(glob, ee,  'ChaillouSuri_%s_%s_ee' % (p, N))
+    plot_liftings(glob, loc, ee, 'ChaillouSuri_%s_%02d' % (p, N))
     list_timings(TimingClear_clear, [TimingType_wall])
 
 
@@ -389,9 +389,7 @@ def test_CarstensenKlose(p, N):
 
     # Report
     format_result('Carstensen-Klose', p, mesh.num_cells(), *result[3:])
-    plot_liftings(glob, loc, 'CarstensenKlose_%s_%s' % (p, N))
-    rescale_function(ee, glob)
-    plot_liftings(glob, ee,  'CarstensenKlose_%s_%s_ee' % (p, N))
+    plot_liftings(glob, loc, ee, 'CarstensenKlose_%s_%02d' % (p, N))
     list_timings(TimingClear_clear, [TimingType_wall])
 
 
