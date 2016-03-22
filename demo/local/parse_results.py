@@ -15,9 +15,8 @@ prolog = r"""\begin{table}[b]
 %
 case
     &   \#cells & $C_{\mathrm{cont}, \mathrm{PF}}$
-                              %& $\norm{{\cal E}_\mathrm{glob}}_q$
-                              & $\cred{N^{-\fq}}\norm{{\cal E}_\mathrm{glob}}_q$
-                                          & $\norm{{\cal E}_\mathrm{loc}}_q$
+                              & $\norm{{\cal E}_\mathrm{glob}}_q$
+                                          & $\cred{N^\fq}\norm{{\cal E}_\mathrm{loc}}_q$
                                                       & $\mathrm{Eff_{\eqref{eq_lift_norm_equiv_1}}}$
                                                                   & $\mathrm{Eff_{\eqref{eq_lift_norm_equiv_2}}}$
 \\\hline\hline
