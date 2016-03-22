@@ -22,7 +22,7 @@ case
 \\\hline\hline
 %
 """
-mrow_begin = r"\multirow{%s}{*}{\parbox{3cm}{\centering %s $p=%s$}}" + os.linesep
+mrow_begin = r"\multirow{%s}{*}{\parbox{3cm}{\centering %s $p=%s$, $N=3$}}" + os.linesep
 row = r"& %s & %s & %s & %s & %s & %s \\" + os.linesep
 mrow_end = r"\hline" + os.linesep
 epilog = r"""\end{tabular}
