@@ -28,7 +28,8 @@ row = r"& %s & %s & %s & %s & %s & %s \\" + os.linesep
 mrow_end = r"\hline" + os.linesep
 epilog = r"""\end{tabular}
 \caption{Quantities of localization inequalities~\eqref{eq_lift_norm_equiv}
-         (approximating~\eqref{eq_loc_dual_gal}) for chosen model problems.}
+         (approximating~\eqref{eq_loc_dual_gal_2}, \eqref{eq_loc_dual_gal_1})
+         for chosen model problems.}
 \label{tab_loc}
 \end{table}
 """
