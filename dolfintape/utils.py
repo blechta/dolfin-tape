@@ -25,7 +25,7 @@ import os, errno
 from functools import wraps
 import __builtin__
 
-__all__ = ['la_index_mpitype', 'adapt', 'PETScVector_ipow', 'pow']
+__all__ = ['la_index_mpitype', 'PETScVector_ipow', 'pow']
 
 def la_index_mpitype():
     """mpi4py type corresponding to dolfin::la_index."""
@@ -34,25 +34,6 @@ def la_index_mpitype():
     except AttributeError:
         mpi_typedict = MPI4py.__TypeDict__
     return mpi_typedict[np.dtype(la_index_dtype()).char]
-
-
-adapt_wrapper_code = """
-#include <dolfin/adaptivity/adapt.h>
-
-namespace dolfin {
-
-std::shared_ptr<MeshFunction<std::size_t>> adapt_wrapper(
-  const MeshFunction<std::size_t>& mesh_function,
-  std::shared_ptr<const Mesh> adapted_mesh)
-{
-  std::shared_ptr<MeshFunction<std::size_t>> mf;
-  mf = std::make_shared<MeshFunction<std::size_t>>(adapt(mesh_function, adapted_mesh));
-  return mf;
-}
-}
-"""
-
-adapt = compile_extension_module(adapt_wrapper_code).adapt_wrapper
 
 
 pow_wrapper_code = """

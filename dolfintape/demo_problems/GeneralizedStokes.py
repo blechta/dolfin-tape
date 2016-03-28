@@ -23,7 +23,6 @@ from dolfintape import FluxReconstructor
 from dolfintape.deviatoric_space import TensorFunctionSpace, deviatoric
 from dolfintape.cell_diameter import CellDiameters
 from dolfintape.poincare import poincare_const
-from dolfintape.utils import adapt
 
 
 class ImplicitStokesFluxReconstructor(FluxReconstructor):
