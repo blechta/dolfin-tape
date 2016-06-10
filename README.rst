@@ -43,7 +43,7 @@ Authors
 Copyright
 =========
 
-Copyright 2015 Jan Blechta
+Copyright 2015-2016 Jan Blechta
 
 License
 =======
@@ -55,4 +55,4 @@ or any later version. The full text of the license can be found in files
 Contact
 =======
 
-`dolfin-tape` is hosted at https://bitbucket.org/blechta/dolfin-tape/
+`dolfin-tape` is hosted at https://github.com/blechta/dolfin-tape/
