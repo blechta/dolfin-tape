@@ -32,7 +32,8 @@ __all__ = ['solve_p_laplace_adaptive', 'pLapLaplaceAdaptiveSolver',
 
 
 def solve_p_laplace_adaptive(p, criterion, V, f, df, u_ex=None,
-                             eps0=1.0, eps_decrease=0.1**0.5):
+                             eps0=1.0, eps_decrease=0.1**0.5,
+                             solver_parameters=None):
     """Approximate p-Laplace problem with rhs of the form
 
         (f, v) - (df, grad(v))  with test function v
@@ -49,7 +50,7 @@ def solve_p_laplace_adaptive(p, criterion, V, f, df, u_ex=None,
         q = p/(p-1)
     eps = geometric_progression(eps0, eps_decrease)
     solver = pLaplaceAdaptiveSolver(p, q, f, df, u_ex)
-    return solver.solve(V, criterion, eps)
+    return solver.solve(V, criterion, eps, solver_parameters)
 
 
 def geometric_progression(a0, q):
@@ -92,7 +93,7 @@ class pLaplaceAdaptiveSolver(object):
         self.boundary = CompiledSubDomain("on_boundary")
 
 
-    def solve(self, V, criterion, eps):
+    def solve(self, V, criterion, eps, solver_parameters=None):
         """Start on initial function space V, refine adaptively mesh and
         regularization parameter provided by decreasing generator eps
         until
@@ -105,7 +106,7 @@ class pLaplaceAdaptiveSolver(object):
 
         while True:
             logn(25, 'Adapting mesh (space dimension %s): ' % V.dim())
-            result = self._adapt_eps(criterion, u, eps)
+            result = self._adapt_eps(criterion, u, eps, solver_parameters)
             u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
 
             # Check convergence
@@ -127,7 +128,7 @@ class pLaplaceAdaptiveSolver(object):
         return u
 
 
-    def _solve(self, eps, u, reconstructor, P0):
+    def _solve(self, eps, u, reconstructor, P0, solver_parameters):
         """Find approximate solution with fixed eps and mesh. Use
         reconstructor to reconstruct the flux and estimate errors.
         """
@@ -146,11 +147,9 @@ class pLaplaceAdaptiveSolver(object):
         v = TestFunction(V)
         F_eps = ( inner(S_eps, grad(v)) - f*v ) * dx
         bc = DirichletBC(V, exact_solution if exact_solution else 0.0, boundary)
-        solve(F_eps == 0, u, bc,
-              solver_parameters={'newton_solver':
-                                    {'maximum_iterations': 50,
-                                     'report': False}
-                                })
+
+        # Solve
+        solve(F_eps == 0, u, bc, solver_parameters=solver_parameters or {})
 
         # Reconstruct flux q in H^q(div) s.t.
         #       q ~ -S
@@ -191,7 +190,7 @@ class pLaplaceAdaptiveSolver(object):
         return u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up
 
 
-    def _adapt_eps(self, criterion, u, epsilons):
+    def _adapt_eps(self, criterion, u, epsilons, solver_parameters):
         """Solve adaptively in eps on fixed space (given by u) until
 
             criterion = lambda None, Est_h, Est_eps, Est_tot, Est_up: bool
@@ -211,7 +210,7 @@ class pLaplaceAdaptiveSolver(object):
         for eps in epsilons():
             debug('Regularizing using eps = %s' % eps)
             logn(25, '.')
-            result = self._solve(eps, u, reconstructor, P0)
+            result = self._solve(eps, u, reconstructor, P0, solver_parameters)
             u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
             if criterion(None, Est_h, Est_eps, Est_tot, Est_up):
                 break
