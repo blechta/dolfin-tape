@@ -56,7 +56,7 @@ namespace dolfin {
       }
       catch (std::runtime_error &e)
       {
-        zerofill(values.data(), values.size());
+        memset(values.data(), 0, values.size()*sizeof(double));
         return;
       }
       dolfin_assert(!u->get_allow_extrapolation());

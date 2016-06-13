@@ -73,7 +73,7 @@ namespace dolfin
 
       // Intermediate array with zeros
       Array<double> array(n);
-      zerofill(array.data(), n);
+      memset(array.data(), 0, n*sizeof(double));
 
       // Obtain first n values from self
       _x->get(array.data(), n, _inds.data());
@@ -144,7 +144,7 @@ namespace dolfin
     }
 
     /// Return local ownership range of a vector
-    virtual std::pair<std::size_t, std::size_t> local_range() const
+    virtual std::pair<std::int64_t, std::int64_t> local_range() const
     {
       dolfin_not_implemented();
     }

@@ -38,7 +38,6 @@ def hat_function_collection(vertex_colors, color, element=None):
     assert element.family() in ['Lagrange', 'Discontinuous Lagrange']
     assert element.degree() == 1
     ufc_element, ufc_dofmap = jit(element, mpi_comm=mesh.mpi_comm())
-    ufc_element = _make_ufc_finite_element(ufc_element)
     dolfin_element = cpp.FiniteElement(ufc_element)
 
     e = Expression(hats_cpp_code, element=element, domain=mesh)
@@ -155,13 +154,3 @@ def hat_function_grad(vertex, cell):
     # Return norm of gradient
     assert d != 0.0, "Degenerate cell!"
     return 1.0/abs(d)
-
-
-def _make_ufc_finite_element(e):
-    """Convert plain pointer of UFC element to shared pointer. This
-    was needed just briefly in DOLFIN 1.7.0dev and can be removed
-    when suporting just 1.7.0."""
-    if isinstance(e, cpp.ufc_finite_element):
-        return e
-    else:
-        return cpp.make_ufc_finite_element(e)
