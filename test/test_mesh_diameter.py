@@ -49,7 +49,7 @@ class TestCase(unittest.TestCase):
                 self.assertAlmostEqual(d, 2.0**0.5)
 
                 s = mshr.Sphere(Point(100.0, -666666.6, 1e10), 4.0, 5)
-                mesh = mshr.generate_mesh(s, 4)
+                mesh = mshr.generate_mesh(s, 5)
                 d = mesh_diameter(mesh)
                 self.assertAlmostEqual(d, 8.0, 0)
 

@@ -103,8 +103,7 @@ def run_demo(p, epsilons, zero_guess=False):
             u.vector().zero()
         u, est_h, est_eps, est_tot = solve_p_laplace(p, eps, u)
         estimates.append((eps, est_h, est_eps, est_tot))
-        if MPI.size(mesh.mpi_comm()) == 1:
-            file << (u, eps) # FIXME: Deadlock in parallel! Why?
+        file.write(u, eps)
         plot(u, title='p-Laplace, p=%g, eps=%g'%(p, eps))
     plot_conv(p, estimates)
 
