@@ -52,6 +52,8 @@ def _assemble_decorator(assemble_function):
             for i in range(len(spaces)):
                 dim = spaces[i].dofmap().max_cell_dimension()
                 tensor.resize_work_array(i, dim)
+        else:
+            form = args[0]
         return assemble_function(form, *args[1:], **kwargs)
     return decorated_assemble
 
