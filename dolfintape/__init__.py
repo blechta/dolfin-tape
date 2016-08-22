@@ -18,7 +18,7 @@
 """This is dolfin-tape, the DOLFIN tools for a posteriori error estimation."""
 
 __author__ = "Jan Blechta"
-__version__ = "1.7.0dev"
+__version__ = "2016.1.0"
 __license__ = 'LGPL v3'
 
 # Avoid PETSc being initialized by DOLFIN, which sets some performance
