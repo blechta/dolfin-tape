@@ -1,0 +1,26 @@
+language: python
+
+python:
+    - "2.7"
+
+sudo: false
+
+install:
+    - wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh -O miniconda.sh;
+    - bash miniconda.sh -b -p $HOME/miniconda
+    - export PATH="$HOME/miniconda/bin:$PATH"
+    - unset PYTHONPATH
+    - conda config --set always_yes yes
+    - conda config --add channels mikaem/label/travis
+    - conda config --add channels mikaem
+    - conda install fenics=2016.2.dev pytest
+    - python setup.py install
+
+after_failure:
+    - cd $HOME/.instant/error
+    - bash /home/travis/build/blechta/dolfin-tape/test/print_compilelog.sh
+
+script:
+    - cd $PWD/test
+    - py.test -v
+    - mpirun -n 3 py.test -v
