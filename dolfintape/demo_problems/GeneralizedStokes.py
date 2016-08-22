@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from dolfintape import FluxReconstructor
-from dolfintape.deviatoric_space import TensorFunctionSpace, deviatoric
+from dolfintape.deviatoric_space import TensorElement, deviatoric
 from dolfintape.cell_diameter import CellDiameters
 from dolfintape.poincare import poincare_const
 
@@ -57,11 +57,10 @@ class GeneralizedStokesProblem(object):
 
     def __init__(self, mesh, constitutive_law, f, eps):
 
-        V = VectorFunctionSpace(mesh, 'CG', 2)
-        Q = FunctionSpace(mesh, 'CG', 1)
-        S = TensorFunctionSpace(mesh, 'DG', 1, symmetry=True, zero_trace=True)
-        # FIXME: Get rid of deprecated MixedFunctionSpace
-        W = MixedFunctionSpace([V, Q, S])
+        V = VectorElement('CG', mesh.ufl_cell(), 2)
+        Q = FiniteElement('CG', mesh.ufl_cell(), 1)
+        S = TensorElement('DG', mesh.ufl_cell(), 1, symmetry=True, zero_trace=True)
+        W = FunctionSpace(mesh, MixedElement([V, Q, S]))
         info_blue('Number DOFs: %d' % W.dim())
 
         # Interpolate possibly stored old solution to the new space
@@ -166,15 +165,13 @@ class GeneralizedStokesProblem(object):
 
         cf = CellFunction('bool', self._mesh)
 
-        ufc_cell = dolfin.cpp.mesh.ufc.cell()
         x = np.array(self._mesh.geometry().dim()*(0.0,), dtype='float_')
         y = np.array((0.0,), dtype='float_')
 
         for eta in (eta_1, eta_2, eta_3):
             eta_max = eta.vector().max()
             for c in cells(self._mesh):
-                c.get_cell_data(ufc_cell)
-                eta.eval(y, x, c, ufc_cell)
+                eta.eval(y, x, c, c)
                 if y[0] > threshold * eta_max:
                     cf[c] = True
 

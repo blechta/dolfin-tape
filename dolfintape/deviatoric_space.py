@@ -1,4 +1,4 @@
-# Copyright (C) 2015 Jan Blechta
+# Copyright (C) 2015-2016 Jan Blechta
 #
 # This file is part of dolfin-tape.
 #
@@ -15,37 +15,40 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with dolfin-tape. If not, see <http://www.gnu.org/licenses/>.
 
-import dolfin
+import ufl
 from dolfin import cpp
 
-# TODO: This was intended as thin wrapper above DOLFIN providing function
-#       spaces of traceless tensors and transparent manipulation with them.
-#       Following should work for single traceless tensor space but will
-#       not work with mixed spaces were only subspace needs mapping between
-#       independent components and traceless tensor components.
+
+class TensorElement(ufl.TensorElement):
+    """Monkey-patched version of ufl.TensorElement with additional kwarg
+    zero_trace. If zero_trace==True, returns ZeroTraceTensorElement.
+    """
+    def __new__(cls, *args, **kwargs):
+        if kwargs.pop("zero_trace", False):
+            return ZeroTraceTensorElement(*args, **kwargs)
+        else:
+            return ufl.TensorElement(*args, **kwargs)
 
 
-def TensorFunctionSpace(*args, **kwargs):
-    if kwargs.pop("zero_trace", False):
-        return ZeroTraceTensorFunctionSpace(*args, **kwargs)
-    else:
-        return dolfin.TensorFunctionSpace(*args, **kwargs)
-
-
-class ZeroTraceTensorFunctionSpace(dolfin.FunctionSpace):
-    def __new__(cls, mesh, *args, **kwargs):
-        if not isinstance(mesh, cpp.Mesh):
-            cpp.dolfin_error("functionspace.py",
-                             "create function space",
-                             "Illegal argument, not a mesh: " + str(mesh))
+class ZeroTraceTensorElement(ufl.MixedElement):
+    """This class just creates ufl.VectorElement of appropriate value
+    dimension for holding dofs of matrix with zero trace. No mapping of
+    vector dofs to matrix dofs is provided. User must introduce mapping
+    manually into his forms using 'deviatoric' function.
+    """
+    def __new__(cls, *args, **kwargs):
+        if len(args) <= 2 or not isinstance(args[1], ufl.Cell):
+            cpp.dolfin_error("deviatoric_space.py",
+                             "create tensor element with zero trace",
+                             "Expected ufl.Cell as argument 2")
         if not kwargs.pop("symmetry", False):
-            raise NotImplementedError, "Unsymmetric ZeroTraceTensorFunctionSpace" \
+            raise NotImplementedError, "Unsymmetric ZeroTraceTensorElement" \
                     " not implemented!"
         assert not kwargs.get("dim")
-        kwargs["dim"] = cls._num_components(mesh.geometry().dim())
-        V = dolfin.VectorFunctionSpace(mesh, *args, **kwargs)
-        V.__class__ = ZeroTraceTensorFunctionSpace
-        return V
+        kwargs["dim"] = cls._num_components(args[1].geometric_dimension())
+        e = ufl.VectorElement(*args, **kwargs)
+        e.__class__ = ZeroTraceTensorElement
+        return e
 
     def __init__(self, *args, **kwargs):
         pass
@@ -56,26 +59,15 @@ class ZeroTraceTensorFunctionSpace(dolfin.FunctionSpace):
 
 
 def deviatoric(vector):
+    """Maps values of ZeroTraceTensorElement from flattened vector to
+    symmetric matrix with zero trace.
+    """
     if len(vector) == 2: # 2D
-        return dolfin.as_tensor(((vector[0],  vector[1]),
-                                 (vector[1], -vector[0])))
+        return ufl.as_tensor(((vector[0],  vector[1]),
+                              (vector[1], -vector[0])))
     if len(vector) == 5: # 3D
-        return dolfin.as_tensor(((vector[0], vector[2],  vector[3]),
-                                 (vector[2], vector[1],  vector[4]),
-                                 (vector[3], vector[4], -vector[0]-vector[1])))
+        return ufl.as_tensor(((vector[0], vector[2],  vector[3]),
+                              (vector[2], vector[1],  vector[4]),
+                              (vector[3], vector[4], -vector[0]-vector[1])))
     else:
         raise NotImplementedError
-
-
-def TrialFunctions(V):
-    if isinstance(V, ZeroTraceTensorFunctionSpace):
-        return deviatoric(dolfin.TrialFunctions(V))
-    else:
-        return dolfin.TrialFunctions(V)
-
-
-def TestFunctions(V):
-    if isinstance(V, ZeroTraceTensorFunctionSpace):
-        return deviatoric(dolfin.TestFunctions(V))
-    else:
-        return dolfin.TestFunctions(V)

@@ -83,10 +83,10 @@ class DolfinObstacleProblem(GeneralizedStokesProblem):
         Est_2.rename("residual_2 estimate", "")
         Est_3.rename("residual_3 estimate", "")
 
-        f_u << u, N
-        f_Est_1 << Est_1, N
-        f_Est_2 << Est_2, N
-        f_Est_3 << Est_3, N
+        f_u.write(u, N)
+        f_Est_1.write(Est_1, N)
+        f_Est_2.write(Est_2, N)
+        f_Est_3.write(Est_3, N)
 
         return GeneralizedStokesProblem.criterion_h(self)
 
