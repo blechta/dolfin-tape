@@ -1,0 +1,8 @@
+#!/bin/bash
+set -x -e
+
+cd demo/stokes-implicit
+
+wget -N http://fenicsproject.org/pub/data/meshes/dolfin_coarse.xml.gz
+wget -N http://fenicsproject.org/pub/data/meshes/dolfin_fine.xml.gz
+wget -N http://fenicsproject.org/pub/data/meshes/dolfin_fine_subdomains.xml.gz

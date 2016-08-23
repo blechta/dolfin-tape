@@ -23,7 +23,12 @@ Topic :: Scientific/Engineering :: Mathematics
 """
 classifiers = CLASSIFIERS.split('\n')[1:-1]
 
-demofiles = glob.glob(os.path.join("demo", "*", "demo_*.py"))
+demofiles = glob.glob(os.path.join("demo", "*", "demo_*.py"))S
+
+# Download meshes
+if subprocess.call(os.path.join(os.path.curdir, "download-meshes")) != 0:
+    warnings.warn("Download of meshes failed...")
+datafiles = glob.glob(os.path.join("demo", "*", "*.xml.gz"))
 
 setup(name="dolfintape",
       version=version,

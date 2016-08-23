@@ -13,8 +13,8 @@ install:
     - conda config --set always_yes yes
     - conda config --add channels mikaem/label/travis
     - conda config --add channels mikaem
-    - conda install fenics=2016.2.dev pytest
-    - python setup.py install
+    - conda install fenics=2016.2.dev pytest matplotlib
+    - pip install .
 
 after_failure:
     - cd $HOME/.instant/error
