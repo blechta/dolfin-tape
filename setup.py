@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from distutils.core import setup
-import re, os, glob, subprocess
+import re, os, glob, subprocess, warnings
 
 version = re.findall('__version__ = "(.*)"',
                      open('dolfintape/__init__.py', 'r').read())[0]
@@ -44,5 +44,5 @@ setup(name="dolfintape",
       package_dir={"dolfintape": "dolfintape"},
       package_data={"dolfintape": ["*.h"]},
       data_files=[(os.path.join("share", "dolfintape", os.path.dirname(f)), [f])
-                  for f in demofiles],
+                  for f in demofiles+datafiles],
     )
