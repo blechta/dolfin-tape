@@ -59,7 +59,6 @@ for N in [2**i for i in range(2, 7)]:
     t_flux_reconstructor = toc()
     info_green('Flux reconstruction timing: %g' % t_flux_reconstructor)
     q = Function(w, 0)
-    plot(q, title='q (%d x %d)' % (N, N))
 
     # Compute actual error using known solution
     energy_error = errornorm(u_ex, u, norm_type='H10')

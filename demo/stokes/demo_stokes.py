@@ -60,13 +60,11 @@ for N in [2**i for i in xrange(2, 7)]:
     w = Function(W)
     solve(a == L, w, [bc_u, bc_p])
     u, p = w.split(deepcopy=True)
-    pt = plot(u, title='u (%d x %d)' % (N, N))
-    pt.write_png('results/stokes_u_%d_%d' % (N, N))
 
     # Adjust presure to zero mean
     p.vector()[:] -= assemble(p*dx)/assemble(Constant(1.0)*dx(mesh))
 
-    # Reconstruct extra stress q in H(div)
+    # Reconstruct extra stress q in H(div) component-by-component
     reconstructor = FluxReconstructor(mesh, 2)
     q = []
     tic()
@@ -76,9 +74,6 @@ for N in [2**i for i in xrange(2, 7)]:
     t_flux_reconstructor = toc()
     info_green('Flux reconstruction timing: %g' % t_flux_reconstructor)
     q = as_vector(q)
-    for i in range(mesh.geometry().dim()):
-        pt = plot(q[i], title='q[%d] (%d x %d)' % (i, N, N))
-        pt.write_png('results/stokes_q%d_%d_%d' % (i, N, N))
 
     # Cell size and inf-sup constant
     h = CellDiameters(mesh)
