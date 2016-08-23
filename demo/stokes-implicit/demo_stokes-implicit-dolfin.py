@@ -29,10 +29,12 @@ import dolfin
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 import numpy as np
+import os
 
 from dolfintape.demo_problems.GeneralizedStokes import GeneralizedStokesProblem
 from dolfintape.demo_problems.PowerLawVortices import PowerLawFluid
 from dolfintape.demo_problems.exact_solutions import pStokes_vortices
+from dolfintape.utils import mkdir_p
 
 
 class DolfinObstacleProblem(GeneralizedStokesProblem):
@@ -130,10 +132,13 @@ if dolfin.MPI.rank(dolfin.mpi_comm_world()) == 0:
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 
     plt.tight_layout()
-    dolfin.info('Blocking matplotlib figure on rank 0. Close to continue...')
+    mkdir_p(prefix)
     plt.savefig(prefix+'/convergence.pdf')
-    plt.show()
+    if os.environ.get("DOLFIN_NOPLOT", "0") == "0":
+        dolfin.info('Blocking matplotlib figure on rank 0. Close to continue...')
+        plt.show()
 
-dolfin.interactive()
+if os.environ.get("DOLFIN_NOPLOT", "0") == "0":
+    dolfin.interactive()
 
 dolfin.list_timings(dolfin.TimingClear_keep, [dolfin.TimingType_wall])

@@ -29,8 +29,10 @@ import dolfin
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 import numpy as np
+import os
 
 from dolfintape.demo_problems import StokesVortices, PowerLawVortices
+from dolfintape.utils import mkdir_p
 
 
 # UFLACS form compiler performs much better for complex forms
@@ -113,10 +115,13 @@ if dolfin.MPI.rank(dolfin.mpi_comm_world()) == 0:
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 
     plt.tight_layout()
-    dolfin.info('Blocking matplotlib figure on rank 0. Close to continue...')
+    mkdir_p(prefix)
     plt.savefig(prefix+'/convergence.pdf')
-    plt.show()
+    if os.environ.get("DOLFIN_NOPLOT", "0") == "0":
+        dolfin.info('Blocking matplotlib figure on rank 0. Close to continue...')
+        plt.show()
 
-dolfin.interactive()
+if os.environ.get("DOLFIN_NOPLOT", "0") == "0":
+    dolfin.interactive()
 
 dolfin.list_timings(dolfin.TimingClear_keep, [dolfin.TimingType_wall])

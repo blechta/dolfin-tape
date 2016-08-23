@@ -27,8 +27,10 @@ reconstruction as described in
 from dolfin import *
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 from dolfintape import FluxReconstructor, CellDiameters
+from dolfintape.utils import mkdir_p
 
 
 results = []
@@ -106,7 +108,8 @@ plt.loglog()
 plt.legend(loc=4)
 
 plt.tight_layout()
+mkdir_p('results')
 plt.savefig('results/convergence.pdf')
-plt.show(block=True)
-
-interactive()
+if os.environ.get("DOLFIN_NOPLOT", "0") == "0":
+    plt.show(block=True)
+    interactive()

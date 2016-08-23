@@ -30,9 +30,11 @@ TODO: is there a paper with more closer approach? Hannukainen et al. uses dual
 from dolfin import *
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 from dolfintape import FluxReconstructor, CellDiameters
 from dolfintape.demo_problems import pStokes_vortices
+from dolfintape.utils import mkdir_p
 
 
 results = []
@@ -131,7 +133,8 @@ plt.loglog()
 plt.legend(loc=4)
 
 plt.tight_layout()
+mkdir_p('results')
 plt.savefig('results/convergence.pdf')
-plt.show(block=True)
-
-interactive()
+if os.environ.get("DOLFIN_NOPLOT", "0") == "0":
+    plt.show(block=True)
+    interactive()

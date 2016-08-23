@@ -24,8 +24,10 @@ TODO: Add relevant reference.
 from dolfin import *
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 from dolfintape import FluxReconstructor, CellDiameters
+from dolfintape.utils import mkdir_p
 
 
 mesh = UnitSquareMesh(40, 40, 'crossed')
@@ -108,9 +110,11 @@ def run_demo(p, epsilons, zero_guess=False):
     plot_conv(p, estimates)
 
     plt.legend(loc=4)
+    mkdir_p('results')
     plt.savefig('results/convergence_p%g.pdf' % p)
-    plt.show(block=True)
-    interactive()
+    if os.environ.get("DOLFIN_NOPLOT", "0") == "0":
+        plt.show(block=True)
+        interactive()
 
 
 if __name__ == '__main__':

@@ -21,6 +21,8 @@ after_failure:
     - bash /home/travis/build/blechta/dolfin-tape/test/print_compilelog.sh
 
 script:
-    - cd $PWD/test
+    - cd $PWD/test/unit
     - py.test -v
     - mpirun -n 3 py.test -v
+    - cd ../regression
+    - python test.py
