@@ -23,7 +23,7 @@ Topic :: Scientific/Engineering :: Mathematics
 """
 classifiers = CLASSIFIERS.split('\n')[1:-1]
 
-demofiles = glob.glob(os.path.join("demo", "*", "demo_*.py"))S
+demofiles = glob.glob(os.path.join("demo", "*", "demo_*.py"))
 
 # Download meshes
 if subprocess.call(os.path.join(os.path.curdir, "download-meshes")) != 0:
