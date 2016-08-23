@@ -473,7 +473,7 @@ class FluxReconstructor(Variable):
                 assert removed_dof in dofmap_dg.cell_dofs(c.index())
 
             # Exclude unowned DOFs
-            local_dofs = np.unique(dof for dof in local_dofs if dof < local_ownership_size)
+            local_dofs = np.unique([dof for dof in local_dofs if dof < local_ownership_size])
             assert local_dofs.min() >= 0 and local_dofs.max() < local_ownership_size
 
             # Build global dofs
