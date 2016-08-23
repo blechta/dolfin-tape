@@ -26,4 +26,4 @@ script:
     - py.test -v
     - mpirun -n 3 py.test -v
     - cd ../regression
-    - python test.py
+    - travis_wait python -u test.py
