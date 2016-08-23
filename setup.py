@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from distutils.core import setup
-import re, os, glob
+import re, os, glob, subprocess
 
 version = re.findall('__version__ = "(.*)"',
                      open('dolfintape/__init__.py', 'r').read())[0]
