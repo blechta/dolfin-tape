@@ -111,22 +111,20 @@ namespace dolfin
       return cp; }
 
     /// Initialize vector to global size N
-    virtual void init(MPI_Comm comm, std::size_t N)
+    virtual void init(std::size_t N)
     {
       dolfin_not_implemented();
     }
 
     /// Intitialize vector with given local ownership range
-    virtual void init(MPI_Comm comm,
-                      std::pair<std::size_t, std::size_t> range)
+    virtual void init(std::pair<std::size_t, std::size_t> range)
     {
       dolfin_not_implemented();
     }
 
     /// Initialise vector with given ownership range and with ghost
     /// values
-    virtual void init(MPI_Comm comm,
-                      std::pair<std::size_t, std::size_t> range,
+    virtual void init(std::pair<std::size_t, std::size_t> range,
                       const std::vector<std::size_t>& local_to_global_map,
                       const std::vector<la_index>& ghost_indices)
     {
