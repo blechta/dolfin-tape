@@ -1,0 +1,21 @@
+machine:
+  services:
+    - docker
+
+dependencies:
+  override:
+    - ./download-meshes
+
+test:
+  override:
+    - >
+        docker run
+        -v $(pwd):/home/fenics/dolfintape
+        -w /home/fenics/dolfintape
+        quay.io/fenicsproject/dev
+        "
+        python -c'import ffc, dolfin; print(ffc.git_commit_hash(), ffc.ufc_signature(), dolfin.git_commit_hash())'
+        export PYTHONPATH=\$PWD:\$PYTHONPATH;
+        cd test;
+        py.test && mpirun -n 3 py.test && cd regression && NP=2 python -u test.py
+        "
