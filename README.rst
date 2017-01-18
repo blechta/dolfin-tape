@@ -2,8 +2,8 @@
 dolfin-tape, DOLFIN tools for a posteriori error estimation
 ===========================================================
 
-.. image:: https://travis-ci.org/blechta/dolfin-tape.svg?branch=master
-    :target: https://travis-ci.org/blechta/dolfin-tape
+.. image:: https://circleci.com/gh/blechta/dolfin-tape.svg?style=svg
+    :target: https://circleci.com/gh/blechta/dolfin-tape
 
 
 `dolfin-tape` provides tools for equilibrated-flux-reconstruction
