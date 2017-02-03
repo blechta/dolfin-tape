@@ -143,7 +143,10 @@ class pLaplaceAdaptiveSolver(object):
 
         # Problem formulation
         S = inner(grad(u), grad(u))**(p/2-1) * grad(u) + df
-        S_eps = (eps + inner(grad(u), grad(u)))**(p/2-1) * grad(u) + df
+        sigma_minus = -1./3
+        sigma = Expression("x[0] >= 0 ? 1.0 : sigma_minus",
+                           sigma_minus=sigma_minus, degree=0, domain=mesh)
+        S_eps = (eps + sigma*inner(grad(u), grad(u)))**(p/2-1) * grad(u) + df
         v = TestFunction(V)
         F_eps = ( inner(S_eps, grad(v)) - f*v ) * dx
         bc = DirichletBC(V, exact_solution if exact_solution else 0.0, boundary)
@@ -164,6 +167,7 @@ class pLaplaceAdaptiveSolver(object):
         est1 = assemble(inner(S_eps+Q, S_eps+Q)**(0.5*q)*v*dx)
         est2 = assemble(inner(S_eps-S, S_eps-S)**(0.5*q)*v*dx)
         q = float(q)
+        est0.abs(); est1.abs(); est2.abs()  # FIXME: hack
         est_h   = est0.array()**(1.0/q) + est1.array()**(1.0/q)
         est_eps = est2.array()**(1.0/q)
         est_tot = est_h + est_eps
