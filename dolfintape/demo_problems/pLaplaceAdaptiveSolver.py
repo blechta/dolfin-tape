@@ -142,11 +142,11 @@ class pLaplaceAdaptiveSolver(object):
         eps = Constant(eps)
 
         # Problem formulation
-        S = inner(grad(u), grad(u))**(p/2-1) * grad(u) + df
         sigma_minus = -1./3
         sigma = Expression("x[0] >= 0 ? 1.0 : sigma_minus",
                            sigma_minus=sigma_minus, degree=0, domain=mesh)
-        S_eps = (eps + sigma*inner(grad(u), grad(u)))**(p/2-1) * grad(u) + df
+        S = sigma * inner(grad(u), grad(u))**(p/2-1) * grad(u) + df
+        S_eps = (eps + sigma * inner(grad(u), grad(u)))**(p/2-1) * grad(u) + df
         v = TestFunction(V)
         F_eps = ( inner(S_eps, grad(v)) - f*v ) * dx
         bc = DirichletBC(V, exact_solution if exact_solution else 0.0, boundary)
