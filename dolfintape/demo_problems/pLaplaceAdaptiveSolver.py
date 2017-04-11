@@ -31,12 +31,12 @@ __all__ = ['solve_p_laplace_adaptive', 'pLapLaplaceAdaptiveSolver',
            'geometric_progression']
 
 
-def solve_p_laplace_adaptive(p, criterion, V, f, df, u_ex=None,
+def solve_p_laplace_adaptive(p, criterion, V, f, S=None, u_ex=None,
                              eps0=1.0, eps_decrease=0.1**0.5,
                              solver_parameters=None):
-    """Approximate p-Laplace problem with rhs of the form
+    """Approximate problem
 
-        (f, v) - (df, grad(v))  with test function v
+        (S(u, eps), grad(v)) = (f, v)  for all test functions v
 
     on initial space V. Compute adaptively in regularization parameter
     and refine mesh adaptively until
@@ -49,7 +49,7 @@ def solve_p_laplace_adaptive(p, criterion, V, f, df, u_ex=None,
     else:
         q = p/(p-1)
     eps = geometric_progression(eps0, eps_decrease)
-    solver = pLaplaceAdaptiveSolver(p, q, f, df, u_ex)
+    solver = pLaplaceAdaptiveSolver(p, q, f, S, u_ex)
     return solver.solve(V, criterion, eps, solver_parameters)
 
 
@@ -70,15 +70,15 @@ def geometric_progression(a0, q):
     return generator
 
 
+# FIXME: This is no longer p-Laplace solver; fix naming
 class pLaplaceAdaptiveSolver(object):
-    """Adaptive solver for p-Laplace problem with spatial adaptivity and
+    """Adaptive solver for nonlinear problem with spatial adaptivity and
     adaptivity in regularization parameter.
     """
-    def __init__(self, p, q, f, df, exact_solution=None):
-        """Adaptive solver for p-Laplace problem (q should be dual exponent
-        q = p/(p-1)) with rhs of the form
+    def __init__(self, p, q, f, S=None, exact_solution=None):
+        """Adaptive solver for problem
 
-            (f, v) - (df, grad(v))  with test function v.
+            (S(u, eps), grad(v)) = (f, v)  for all test functions v.
         """
         assert np.allclose(1.0/float(p) + 1.0/float(q), 1.0), \
                 "Expected conjugate Lebesgue exponents " \
@@ -87,10 +87,19 @@ class pLaplaceAdaptiveSolver(object):
         self.p = p
         self.q = q
         self.f = f
-        self.df = df
         self.u_ex = exact_solution
 
         self.boundary = CompiledSubDomain("on_boundary")
+
+        # Default to p-Laplacian
+        if S is None:
+            def createS(p):
+                def _S(u, eps):
+                    return (eps + inner(grad(u), grad(u)))**(p/2-1) * grad(u)
+                return _S
+            S = createS(p)
+
+        self.S = S
 
 
     def solve(self, V, criterion, eps, solver_parameters=None):
@@ -133,7 +142,7 @@ class pLaplaceAdaptiveSolver(object):
         reconstructor to reconstruct the flux and estimate errors.
         """
         p, q = self.p, self.q
-        f, df = self.f, self.df
+        f = self.f
         boundary = self.boundary
         exact_solution = self.u_ex
         V = u.function_space()
@@ -142,11 +151,8 @@ class pLaplaceAdaptiveSolver(object):
         eps = Constant(eps)
 
         # Problem formulation
-        sigma_minus = -1./3
-        sigma = Expression("x[0] >= 0 ? 1.0 : sigma_minus",
-                           sigma_minus=sigma_minus, degree=0, domain=mesh)
-        S = sigma * inner(grad(u), grad(u))**(p/2-1) * grad(u) + df
-        S_eps = sigma * (eps + inner(grad(u), grad(u)))**(p/2-1) * grad(u) + df
+        S = self.S(u, 0)
+        S_eps = self.S(u, eps)
         v = TestFunction(V)
         F_eps = ( inner(S_eps, grad(v)) - f*v ) * dx
         bc = DirichletBC(V, exact_solution if exact_solution else 0.0, boundary)
@@ -167,7 +173,9 @@ class pLaplaceAdaptiveSolver(object):
         est1 = assemble(inner(S_eps+Q, S_eps+Q)**(0.5*q)*v*dx)
         est2 = assemble(inner(S_eps-S, S_eps-S)**(0.5*q)*v*dx)
         q = float(q)
-        est0.abs(); est1.abs(); est2.abs()  # FIXME: hack
+        # Hack to avoid taking square root of negative numbers; can happen
+        # when no regularization is employed and cancellation occurs
+        est0.abs(); est1.abs(); est2.abs()
         est_h   = est0.array()**(1.0/q) + est1.array()**(1.0/q)
         est_eps = est2.array()**(1.0/q)
         est_tot = est_h + est_eps
