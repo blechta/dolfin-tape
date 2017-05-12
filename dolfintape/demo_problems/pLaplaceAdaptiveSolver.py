@@ -43,7 +43,7 @@ def solve_p_laplace_adaptive(p, criterion, V, f, S=None, u_ex=None,
 
         criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: bool
 
-    returns True. Return u."""
+    returns True. Return u, est_h, est_eps, est_tot."""
     if isinstance(p, Constant):
         q = Constant(float(p)/(float(p)-1.0))
     else:
@@ -109,7 +109,7 @@ class pLaplaceAdaptiveSolver(object):
 
             criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: bool
 
-        returns True. Return found approximation."""
+        returns True. Return found approximation and estimator functions."""
         p = float(self.p)
         u = Function(V)
 
@@ -134,7 +134,7 @@ class pLaplaceAdaptiveSolver(object):
             u = u.child()
             V = u.function_space()
 
-        return u
+        return u, est_h, est_eps, est_tot
 
 
     def _solve(self, eps, u, reconstructor, P0, solver_parameters):
