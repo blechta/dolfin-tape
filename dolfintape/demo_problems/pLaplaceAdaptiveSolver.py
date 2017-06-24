@@ -31,14 +31,14 @@ __all__ = ['solve_p_laplace_adaptive', 'pLapLaplaceAdaptiveSolver',
            'geometric_progression']
 
 
-def solve_p_laplace_adaptive(p, criterion, V, f, S=None, u_ex=None,
+def solve_p_laplace_adaptive(p, criterion, u, f, S=None, u_ex=None,
                              eps0=1.0, eps_decrease=0.1**0.5,
                              solver_parameters=None):
     """Approximate problem
 
         (S(u, eps), grad(v)) = (f, v)  for all test functions v
 
-    on initial space V. Compute adaptively in regularization parameter
+    with initial guess u. Compute adaptively in regularization parameter
     and refine mesh adaptively until
 
         criterion = lambda u_h, Est_h, Est_eps, Est_tot, Est_up: bool
@@ -50,7 +50,7 @@ def solve_p_laplace_adaptive(p, criterion, V, f, S=None, u_ex=None,
         q = p/(p-1)
     eps = geometric_progression(eps0, eps_decrease)
     solver = pLaplaceAdaptiveSolver(p, q, f, S, u_ex)
-    return solver.solve(V, criterion, eps, solver_parameters)
+    return solver.solve(u, criterion, eps, solver_parameters)
 
 
 def geometric_progression(a0, q):
@@ -102,8 +102,8 @@ class pLaplaceAdaptiveSolver(object):
         self.S = S
 
 
-    def solve(self, V, criterion, eps, solver_parameters=None):
-        """Start on initial function space V, refine adaptively mesh and
+    def solve(self, u, criterion, eps, solver_parameters=None):
+        """Start on initial function space, refine adaptively mesh and
         regularization parameter provided by decreasing generator eps
         until
 
@@ -111,10 +111,10 @@ class pLaplaceAdaptiveSolver(object):
 
         returns True. Return found approximation and estimator functions."""
         p = float(self.p)
-        u = Function(V)
 
         while True:
-            logn(25, 'Adapting mesh (space dimension %s): ' % V.dim())
+            logn(25, 'Adapting mesh (space dimension %s): '
+                     % u.function_space().dim())
             result = self._adapt_eps(criterion, u, eps, solver_parameters)
             u, est_h, est_eps, est_tot, Est_h, Est_eps, Est_tot, Est_up = result
 
@@ -128,11 +128,10 @@ class pLaplaceAdaptiveSolver(object):
             markers = self.estimator_to_markers(est_h, p/(p-1.0), fraction=0.5)
             log(25, 'Marked %s of %s cells for refinement'
                     % (sum(markers), markers.mesh().num_cells()))
-            adapt(V.mesh(), markers)
-            mesh = V.mesh().child()
+            adapt(u.function_space().mesh(), markers)
+            mesh = u.function_space().mesh().child()
             adapt(u, mesh)
             u = u.child()
-            V = u.function_space()
 
         return u, est_h, est_eps, est_tot
 
